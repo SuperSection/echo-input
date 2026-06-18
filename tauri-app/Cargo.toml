@@ -1,0 +1,29 @@
+[package]
+name = "tauri-app"
+description = "EchoInput Tauri application"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+input-core = { path = "../input-core" }
+overlay = { path = "../overlay" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-global-shortcut = "2"
+
+# Platform-specific capture
+[target.'cfg(target_os = "linux")'.dependencies]
+platform-linux = { path = "../platform-linux" }
+overlay-wayland = { path = "../overlay-wayland" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+platform-windows = { path = "../platform-windows" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+platform-macos = { path = "../platform-macos" }
