@@ -7,7 +7,7 @@ use input_core::traits::OverlayRenderer;
 use std::os::unix::io::{AsFd, AsRawFd};
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, warn};
 
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool, wl_surface};
@@ -36,6 +36,7 @@ struct OutputInfo {
     width: i32,
     height: i32,
     proxy_id: u32,
+    global_id: u32,
 }
 
 struct WaylandGlobals {
@@ -206,6 +207,7 @@ impl OverlayRenderer for WaylandRenderer {
 struct AppState {
     outputs: Vec<OutputInfo>,
     output_proxies: Vec<wl_output::WlOutput>,
+    needs_surface_commit: bool,
 }
 
 impl AppState {
@@ -213,6 +215,7 @@ impl AppState {
         Self {
             outputs: Vec::new(),
             output_proxies: Vec::new(),
+            needs_surface_commit: false,
         }
     }
 
@@ -240,41 +243,81 @@ fn run_wayland_event_loop(
 ) -> anyhow::Result<()> {
     let conn = Connection::connect_to_env()
         .map_err(|e| WaylandError::Connection(e.to_string()))?;
+    info!("Wayland connection established");
 
     let (globals, mut event_queue) = registry_queue_init::<AppState>(&conn)
         .map_err(|e| WaylandError::Connection(format!("registry_queue_init: {}", e)))?;
 
     let qh = event_queue.handle();
 
+    // Log all registry globals at startup
+    let all_globals = globals.contents().clone_list();
+    info!("Registry globals ({}):", all_globals.len());
+    for g in &all_globals {
+        info!(name = %g.interface, version = g.version, "  global");
+    }
+
+    // Bind singleton globals
+    info!("Binding singleton globals...");
     let compositor: wl_compositor::WlCompositor = globals
         .bind(&qh, 1..=1, ())
         .map_err(|e| WaylandError::MissingProtocol(format!("wl_compositor: {}", e)))?;
+    info!("  wl_compositor bound");
+
     let shm: wl_shm::WlShm = globals
         .bind(&qh, 1..=1, ())
         .map_err(|e| WaylandError::MissingProtocol(format!("wl_shm: {}", e)))?;
+    info!("  wl_shm bound");
+
     let layer_shell: zwlr_layer_shell_v1::ZwlrLayerShellV1 = globals
         .bind(&qh, 1..=1, ())
         .map_err(|e| WaylandError::MissingProtocol(format!("zwlr_layer_shell_v1: {}", e)))?;
-
-    info!(wayland_globals = true, "Wayland renderer initialized");
+    info!("  zwlr_layer_shell_v1 bound");
 
     let wayland_globals = WaylandGlobals { compositor, shm, layer_shell };
-    let mut state = AppState::new();
 
-    // Roundtrip to collect wl_output globals
+    // Bind wl_output globals manually via the registry.
+    // registry_queue_init consumed the initial Global events internally,
+    // so the Dispatch impl was NOT called for them. We iterate GlobalListContents
+    // and bind each wl_output by its global ID.
+    let mut state = AppState::new();
+    let registry = globals.registry();
+    let mut output_count = 0;
+    for g in &all_globals {
+        if g.interface == "wl_output" {
+            output_count += 1;
+            let version = g.version.min(4);
+            info!(global_id = g.name, version, "Binding wl_output");
+            let proxy: wl_output::WlOutput = registry.bind(g.name, version, &qh, ());
+            let proxy_id = proxy.id().protocol_id();
+            state.outputs.push(OutputInfo {
+                name: String::new(),
+                scale: 1,
+                width: 0,
+                height: 0,
+                proxy_id,
+                global_id: g.name,
+            });
+            state.output_proxies.push(proxy);
+            info!(global_id = g.name, proxy_id, "wl_output bound");
+        }
+    }
+    info!(count = output_count, "wl_output globals found");
+
+    // Roundtrip to receive wl_output geometry/mode/scale events
+    info!("Post-bind roundtrip for output metadata...");
     event_queue.roundtrip(&mut state).map_err(|e| {
-        WaylandError::Connection(format!("roundtrip failed: {}", e))
+        WaylandError::Connection(format!("output roundtrip failed: {}", e))
     })?;
 
-    info!(outputs = state.outputs.len(), "Outputs discovered");
+    info!("Output discovered:");
     for info in &state.outputs {
-        debug!(
-            output = %info.name,
-            width = info.width,
-            height = info.height,
-            scale = info.scale,
-            "Output details"
-        );
+        info!(name = %info.name, width = info.width, height = info.height, scale = info.scale, "");
+    }
+    info!(count = state.outputs.len(), "Outputs discovered");
+
+    if state.outputs.is_empty() {
+        warn!("No outputs discovered - overlay will not be visible");
     }
 
     let mut shortcut_rx = bus.subscribe_shortcut();
@@ -290,6 +333,7 @@ fn run_wayland_event_loop(
 
     // Create initial surface
     if !state.outputs.is_empty() {
+        info!("Creating initial layer surface...");
         match create_layer_surface(&wayland_globals, &config, &state, &qh) {
             Ok((s, ls, scale)) => {
                 let w = BASE_WIDTH * scale;
@@ -297,16 +341,19 @@ fn run_wayland_event_loop(
                 surface = Some(s);
                 layer_surface = Some(ls);
                 shm_buf = Some(ShmBuffer::create(&wayland_globals, w, h, &qh)?);
-                info!(
-                    width = w,
-                    height = h,
-                    scale,
-                    "Layer surface created"
-                );
+                info!("Layer surface created");
+                info!(width = w, height = h, scale, "Layer surface configured");
             }
-            Err(e) => warn!("Failed to create layer surface: {}", e),
+            Err(e) => {
+                warn!("Failed to create layer surface: {}", e);
+                warn!("Continuing without overlay - will retry on Restart command");
+            }
         }
+    } else {
+        warn!("No outputs available, cannot create layer surface");
     }
+
+    info!("Renderer ready");
 
     loop {
         // Read pending wayland events (non-blocking)
@@ -314,6 +361,13 @@ fn run_wayland_event_loop(
             let _ = guard.read();
         }
         let _ = event_queue.dispatch_pending(&mut state);
+
+        if state.needs_surface_commit {
+            if let Some(ref s) = surface {
+                s.commit();
+            }
+            state.needs_surface_commit = false;
+        }
 
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
@@ -425,7 +479,11 @@ fn create_layer_surface(
     state: &AppState,
     qh: &QueueHandle<AppState>,
 ) -> Result<(wl_surface::WlSurface, zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, i32), WaylandError> {
+    info!("Creating layer surface");
+
     let surface = globals.compositor.create_surface(qh, ());
+    info!("  wl_surface created");
+
     let layer = zwlr_layer_shell_v1::Layer::Overlay;
 
     // Select output: use config.monitor if set, otherwise first available output
@@ -435,16 +493,19 @@ fn create_layer_surface(
                 .find_output(config.monitor.as_deref())
                 .map(|(_, o)| o.scale)
                 .unwrap_or(1);
+            info!(scale, "  Using output for layer surface");
             (Some(proxy.clone()), scale)
         }
         None => {
             if let Some(name) = &config.monitor {
-                warn!(monitor = %name, "Monitor not found, using default");
+                warn!(monitor = %name, "  Monitor not found, using default");
             }
+            info!("  No specific output, using compositor default");
             (None, 1)
         }
     };
 
+    info!("  Calling get_layer_surface...");
     let layer_surface = globals.layer_shell.get_layer_surface(
         &surface,
         output_proxy.as_ref(),
@@ -453,8 +514,10 @@ fn create_layer_surface(
         qh,
         (),
     );
+    info!("  Layer surface obtained");
 
     let anchor_bits = position_to_anchor_bits(config.position);
+    info!(anchor_bits, "  set_anchor called");
     layer_surface.set_anchor(zwlr_layer_surface_v1::Anchor::from_bits_truncate(anchor_bits));
     layer_surface.set_exclusive_zone(-1);
     layer_surface.set_keyboard_interactivity(
@@ -464,9 +527,10 @@ fn create_layer_surface(
     let w = (BASE_WIDTH * scale) as u32;
     let h = (BASE_HEIGHT * scale) as u32;
     layer_surface.set_size(w, h);
+    info!(width = w, height = h, scale, "  set_size done");
     surface.commit();
+    info!("  Surface committed");
 
-    debug!(width = w, height = h, scale, "Layer surface created");
     Ok((surface, layer_surface, scale))
 }
 
@@ -575,31 +639,35 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for AppState {
     ) {
         match event {
             wl_registry::Event::Global { name, interface, version } => {
+                info!(
+                    global_id = name,
+                    interface = %interface,
+                    version,
+                    "Registry global (runtime)"
+                );
                 if interface == "wl_output" {
-                    let proxy: wl_output::WlOutput = _proxy.bind(
-                        name,
-                        4,
-                        qh,
-                        (),
-                    );
+                    let proxy: wl_output::WlOutput = _proxy.bind(name, version.min(4), qh, ());
                     let proxy_id = proxy.id().protocol_id();
                     state.outputs.push(OutputInfo {
-                        name: format!("output-{}", name),
+                        name: String::new(),
                         scale: 1,
                         width: 0,
                         height: 0,
                         proxy_id,
+                        global_id: name,
                     });
                     state.output_proxies.push(proxy);
-                    trace!(name, version, proxy_id, "wl_output added");
+                    info!(global_id = name, proxy_id, "wl_output bound (runtime)");
                 }
             }
             wl_registry::Event::GlobalRemove { name } => {
-                if let Some(idx) = state.outputs.iter().position(|o| o.name == format!("output-{}", name)) {
-                    state.outputs.remove(idx);
+                if let Some(idx) = state.outputs.iter().position(|o| o.global_id == name) {
+                    let removed = state.outputs.remove(idx);
                     state.output_proxies.remove(idx);
+                    info!(global_id = name, name = %removed.name, "Output removed");
+                } else {
+                    info!(global_id = name, "Global removed (not an output)");
                 }
-                debug!("Global {} removed", name);
             }
             _ => {}
         }
@@ -624,18 +692,25 @@ impl Dispatch<wl_output::WlOutput, ()> for AppState {
         let info = &mut state.outputs[idx];
         match event {
             wl_output::Event::Geometry { make, .. } => {
-                if !make.is_empty() {
-                    info.name = make;
+                if make.is_empty() {
+                    // Fallback to synthetic name only when no real name is available
+                    info.name = format!("output-{}", info.proxy_id);
+                    info!(name = %info.name, global_id = info.global_id, "Output geometry (no make, synthetic name)");
+                } else {
+                    info.name = make.clone();
+                    info!(name = %info.name, global_id = info.global_id, "Output geometry received");
                 }
             }
             wl_output::Event::Scale { factor } => {
                 info.scale = factor;
+                info!(factor, global_id = info.global_id, "Output scale received");
             }
             wl_output::Event::Mode { width, height, flags, .. } => {
                 if let WEnum::Value(f) = flags {
                     if f.bits() & 1 != 0 {
                         info.width = width;
                         info.height = height;
+                        info!(width, height, global_id = info.global_id, "Output mode received");
                     }
                 }
             }
@@ -649,11 +724,13 @@ impl Dispatch<zwlr_layer_shell_v1::ZwlrLayerShellV1, ()> for AppState {
 }
 
 impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for AppState {
-    fn event(_: &mut Self, _: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, event: zwlr_layer_surface_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(state: &mut Self, proxy: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, event: zwlr_layer_surface_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
         match event {
-            zwlr_layer_surface_v1::Event::Closed => trace!("Layer surface closed"),
-            zwlr_layer_surface_v1::Event::Configure { serial, width: _, height: _ } => {
-                trace!(serial, "Layer surface configure");
+            zwlr_layer_surface_v1::Event::Closed => warn!("Layer surface closed by compositor"),
+            zwlr_layer_surface_v1::Event::Configure { serial, width, height } => {
+                info!(serial, width, height, "Layer surface configure received");
+                proxy.ack_configure(serial);
+                state.needs_surface_commit = true;
             }
             _ => {}
         }
