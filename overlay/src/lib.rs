@@ -300,7 +300,7 @@ pub struct MockRenderer {
     stop_count: AtomicUsize,
     update_count: AtomicUsize,
     last_display_event: std::sync::Mutex<Option<DisplayEvent>>,
-    bus: Option<MessageBus>,
+    _bus: Option<MessageBus>,
 }
 
 impl MockRenderer {
@@ -311,7 +311,7 @@ impl MockRenderer {
             stop_count: AtomicUsize::new(0),
             update_count: AtomicUsize::new(0),
             last_display_event: std::sync::Mutex::new(None),
-            bus: None,
+            _bus: None,
         }
     }
 
@@ -322,7 +322,7 @@ impl MockRenderer {
             stop_count: AtomicUsize::new(0),
             update_count: AtomicUsize::new(0),
             last_display_event: std::sync::Mutex::new(None),
-            bus: Some(bus),
+            _bus: Some(bus),
         }
     }
 

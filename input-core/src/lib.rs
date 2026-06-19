@@ -1,3 +1,4 @@
+pub mod config;
 pub mod events;
 pub mod ipc;
 pub mod keys;
@@ -5,6 +6,7 @@ pub mod overlay;
 pub mod processor;
 pub mod traits;
 
+pub use config::*;
 pub use events::*;
 pub use ipc::*;
 pub use keys::*;

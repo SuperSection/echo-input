@@ -1,5 +1,6 @@
 pub mod animation;
 pub mod error;
+pub mod keymap_compat;
 pub mod renderer;
 
 pub use renderer::WaylandRenderer;
