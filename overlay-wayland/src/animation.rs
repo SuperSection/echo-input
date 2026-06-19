@@ -18,6 +18,7 @@ pub struct Animation {
     fade_duration: Duration,
     current_opacity: f32,
     target_opacity: f32,
+    dirty: bool,
 }
 
 impl Animation {
@@ -30,6 +31,7 @@ impl Animation {
             fade_duration: DEFAULT_FADE_DURATION,
             current_opacity: 0.0,
             target_opacity: config.opacity,
+            dirty: false,
         }
     }
 
@@ -38,6 +40,7 @@ impl Animation {
         self.shown_at = Instant::now();
         self.current_opacity = opacity;
         self.target_opacity = opacity;
+        self.dirty = true;
     }
 
     pub fn update_config(&mut self, config: &OverlayConfig) {
@@ -50,15 +53,14 @@ impl Animation {
 
     pub fn tick(&mut self) -> bool {
         let now = Instant::now();
+        let mut changed = false;
         match self.state {
-            AnimationState::Idle => false,
+            AnimationState::Idle => {}
             AnimationState::Visible => {
                 if now.duration_since(self.shown_at) >= self.display_duration {
                     self.state = AnimationState::Fading;
                     self.fade_start = now;
-                    true
-                } else {
-                    false
+                    changed = true;
                 }
             }
             AnimationState::Fading => {
@@ -66,14 +68,19 @@ impl Animation {
                 if elapsed >= self.fade_duration {
                     self.current_opacity = 0.0;
                     self.state = AnimationState::Idle;
-                    true
+                    changed = true;
                 } else {
                     let progress = elapsed.as_secs_f32() / self.fade_duration.as_secs_f32();
                     self.current_opacity = self.target_opacity * (1.0 - progress);
-                    true
+                    changed = true;
                 }
             }
         }
+        if self.dirty {
+            self.dirty = false;
+            changed = true;
+        }
+        changed
     }
 
     pub fn current_opacity(&self) -> f32 {

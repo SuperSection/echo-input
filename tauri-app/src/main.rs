@@ -1,25 +1,19 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
-use input_core::ipc::{MessageBus, OverlayCommand, SettingsUpdate};
-use input_core::overlay::OverlayConfig;
+use eframe::egui;
+use input_core::events::{ModifierState, ProcessedEvent};
+use input_core::ipc::MessageBus;
 use input_core::processor::DefaultEventProcessor;
-use input_core::traits::{
-    EventProcessor, KeyboardCaptureProvider, OverlayRendererFactory, ProcessorConfig,
-};
-use overlay::OverlayManager;
-use tokio::sync::broadcast;
-use tracing::{error, info, warn};
+use input_core::traits::{EventProcessor, KeyboardCaptureProvider, ProcessorConfig};
+use std::sync::mpsc;
+use tracing::{error, info};
 
 fn parse_log_level() -> String {
     let args: Vec<String> = std::env::args().collect();
-
     if args.iter().any(|a| a == "--trace") {
         return "trace".into();
     }
     if args.iter().any(|a| a == "--debug") {
         return "debug".into();
     }
-
     std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into())
 }
 
@@ -33,130 +27,122 @@ fn main() {
 
     info!("EchoInput starting");
 
-    let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+    let (display_tx, display_rx) = mpsc::channel::<String>();
 
-    rt.block_on(async {
-        if let Err(e) = run().await {
-            error!(error = %e, "Fatal error");
-            std::process::exit(1);
+    std::thread::spawn(move || {
+        if let Err(e) = run_capture(display_tx) {
+            error!("Capture failed: {}", e);
         }
     });
+
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([260.0, 50.0])
+            .with_min_inner_size([260.0, 50.0])
+            .with_decorations(false)
+            .with_always_on_top()
+            .with_transparent(true),
+        ..Default::default()
+    };
+
+    eframe::run_native(
+        "EchoInput",
+        options,
+        Box::new(move |_cc| {
+            Ok(Box::new(OverlayApp {
+                text: "EchoInput Ready".into(),
+                rx: display_rx,
+                positioned: false,
+            }))
+        }),
+    )
+    .unwrap();
 }
 
-async fn run() -> anyhow::Result<()> {
-    // ── 1. Create the message bus ──────────────────────────────
+struct OverlayApp {
+    text: String,
+    rx: mpsc::Receiver<String>,
+    positioned: bool,
+}
+
+impl eframe::App for OverlayApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        while let Ok(text) = self.rx.try_recv() {
+            self.text = text;
+        }
+
+        if !self.positioned {
+            let screen = ctx.input(|i| i.screen_rect);
+            let x = screen.max.x - 280.0;
+            let y = 20.0;
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
+            self.positioned = true;
+        }
+
+        ctx.request_repaint();
+
+        let frame = egui::Frame::NONE
+            .fill(egui::Color32::from_rgba_unmultiplied(20, 20, 20, 210))
+            .corner_radius(10.0)
+            .inner_margin(egui::Margin::symmetric(16, 8));
+
+        egui::CentralPanel::default()
+            .frame(frame)
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.label(
+                        egui::RichText::new(&self.text)
+                            .size(24.0)
+                            .color(egui::Color32::WHITE)
+                            .family(egui::FontFamily::Monospace),
+                    );
+                });
+            });
+    }
+}
+
+fn run_capture(tx: mpsc::Sender<String>) -> anyhow::Result<()> {
     let bus = MessageBus::new(1024);
 
-    // ── 2. Create platform-specific capture provider ───────────
-    #[cfg(target_os = "linux")]
-    let mut capture = {
-        info!(platform = "linux", capture = "evdev", "Using input capture");
-        platform_linux::evdev_capture::EvdevCapture::with_sender(bus.input_sender())
-    };
+    let mut capture = platform_linux::evdev_capture::EvdevCapture::with_sender(bus.input_sender());
 
-    #[cfg(target_os = "windows")]
-    let mut capture = {
-        info!(platform = "windows", capture = "hooks", "Using input capture");
-        platform_windows::WindowsCapture::with_sender(bus.input_sender())
-    };
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        capture.start().await?;
+        info!("Capture started");
 
-    #[cfg(target_os = "macos")]
-    let mut capture = {
-        info!(platform = "macos", capture = "cgtap", "Using input capture");
-        platform_macos::MacosCapture::with_sender(bus.input_sender())
-    };
+        let mut input_rx = bus.subscribe_input();
+        let mut processor = DefaultEventProcessor::new(ProcessorConfig {
+            group_shortcuts: true,
+            ..Default::default()
+        });
 
-    // ── 3. Create event processor ──────────────────────────────
-    let mut processor = DefaultEventProcessor::new(ProcessorConfig {
-        group_shortcuts: true,
-        history_length: 10,
-        ..Default::default()
-    });
-
-    // ── 4. Create and start overlay manager ────────────────────
-    let mut overlay = OverlayManager::new(OverlayConfig::default());
-    overlay.run(bus.clone());
-
-    // ── 5. Create and start Wayland renderer ───────────────────
-    #[cfg(target_os = "linux")]
-    let mut renderer = {
-        let factory = overlay_wayland::WaylandRendererFactory::new();
-        factory.create(bus.clone())
-    };
-
-    #[cfg(not(target_os = "linux"))]
-    let mut renderer = {
-        Box::new(overlay::MockRenderer::with_bus(bus.clone()))
-    };
-
-    renderer.start(OverlayConfig::default()).await?;
-    info!(renderer = renderer.name(), "Renderer started");
-
-    // ── 6. Subscribe to bus channels ───────────────────────────
-    let mut input_rx = bus.subscribe_input();
-
-    // ── 7. Start capture ───────────────────────────────────────
-    capture.start().await?;
-
-    // ── 8. Spawn task: input → processor → shortcut bus ────────
-    let bus_clone = bus.clone();
-    tokio::spawn(async move {
         loop {
             match input_rx.recv().await {
                 Ok(event) => {
                     let processed = processor.process(event);
                     for pe in processed {
                         match pe {
-                            input_core::events::ProcessedEvent::Shortcut(combo) => {
-                                let shortcut_event =
-                                    input_core::ipc::ShortcutEvent::new(combo.clone());
-                                bus_clone.publish_shortcut(shortcut_event);
+                            ProcessedEvent::Shortcut(combo) => {
+                                info!("Shortcut: {}", combo.display);
+                                let _ = tx.send(combo.display);
                             }
-                            input_core::events::ProcessedEvent::ModifierChange(_mods) => {}
-                            input_core::events::ProcessedEvent::RawKey(_kbd) => {}
+                            ProcessedEvent::RawKey(kbd) => {
+                                let combo = input_core::events::ShortcutCombo::new(
+                                    ModifierState::default(),
+                                    Some(kbd.key),
+                                );
+                                info!("Key: {}", combo.display);
+                                let _ = tx.send(combo.display);
+                            }
+                            ProcessedEvent::ModifierChange(_) => {}
                         }
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(n)) => {
-                    warn!(missed = n, "Input events lagged");
-                }
-                Err(broadcast::error::RecvError::Closed) => {
-                    info!("Input channel closed");
-                    break;
-                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             }
         }
-    });
-
-    // ── 9. Demonstrate settings updates (simulated Tauri) ─────
-    let bus_demo = bus.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        bus_demo.publish_settings(SettingsUpdate::Theme(
-            input_core::overlay::Theme::Light,
-        ));
-
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        bus_demo.publish_command(OverlayCommand::Restart);
-
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        bus_demo.publish_settings(SettingsUpdate::Batch(vec![
-            SettingsUpdate::Opacity(0.6),
-            SettingsUpdate::Position(input_core::overlay::OverlayPosition::TopCenter),
-            SettingsUpdate::Theme(input_core::overlay::Theme::Dark),
-        ]));
-    });
-
-    info!("Ready — press Ctrl+C to exit");
-
-    // ── 10. Wait for shutdown ─────────────────────────────────
-    tokio::signal::ctrl_c().await?;
-    info!("Shutting down");
-
-    renderer.stop().await?;
-    bus.publish_command(OverlayCommand::Stop);
-    capture.stop().await?;
-
-    info!("EchoInput stopped");
-    Ok(())
+        Ok(())
+    })
 }

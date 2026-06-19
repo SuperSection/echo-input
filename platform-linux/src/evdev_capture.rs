@@ -253,6 +253,13 @@ impl EvdevCapture {
             KeyState::Released
         };
 
+        info!(
+            key = ?key,
+            state = ?state,
+            "EvdevCapture received {:?}",
+            key
+        );
+
         let event = InputEvent::Keyboard(KeyboardEvent {
             key,
             state,

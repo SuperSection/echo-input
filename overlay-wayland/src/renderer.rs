@@ -374,9 +374,12 @@ fn run_wayland_event_loop(
                 RendererCommand::Update(event) => {
                     match &event {
                         DisplayEvent::Shortcut(combo) => {
+                            info!("Renderer received event");
+                            info!("Shortcut received: {}", combo.display);
                             current_combos.clear();
                             current_combos.push(combo.clone());
                             animation.show(config.opacity);
+                            info!("Overlay updated");
                         }
                         DisplayEvent::History(combos) => {
                             current_combos = combos.clone();
@@ -401,9 +404,12 @@ fn run_wayland_event_loop(
         }
 
         while let Ok(event) = shortcut_rx.try_recv() {
+            info!("Renderer received event");
+            info!("Shortcut received: {}", event.combo.display);
             current_combos.clear();
             current_combos.push(event.combo);
             animation.show(config.opacity);
+            info!("Overlay updated");
         }
 
         while let Ok(cmd) = command_rx.try_recv() {
@@ -450,6 +456,7 @@ fn run_wayland_event_loop(
                         s.attach(Some(&buf.buffer), 0, 0);
                         s.damage_buffer(0, 0, buf.width, buf.height);
                         s.commit();
+                        info!("Surface committed");
                     }
                 } else {
                     if let Some(ref s) = surface {
