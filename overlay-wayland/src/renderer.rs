@@ -1,13 +1,9 @@
 use crate::animation::Animation;
 use crate::error::WaylandError;
-use input_core::events::{InputEvent, KeyState, KeyboardEvent, ModifierState, ShortcutCombo};
+use input_core::events::ShortcutCombo;
 use input_core::ipc::MessageBus;
-use input_core::keys::VirtualKey;
 use input_core::overlay::{DisplayEvent, OverlayConfig, OverlayPosition};
-use input_core::processor::DefaultEventProcessor;
-use input_core::traits::{EventProcessor, ProcessorConfig};
 use std::os::unix::io::{AsFd, AsRawFd};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
@@ -236,7 +232,6 @@ struct AppState {
     configured: bool,
     configure_width: u32,
     configure_height: u32,
-    keyboard_events: Arc<Mutex<Vec<InputEvent>>>,
     xkb_context: Option<xkbcommon::xkb::Context>,
     xkb_keymap: Option<xkbcommon::xkb::Keymap>,
     xkb_state: Option<xkbcommon::xkb::State>,
@@ -250,7 +245,6 @@ impl AppState {
             configured: false,
             configure_width: 0,
             configure_height: 0,
-            keyboard_events: Arc::new(Mutex::new(Vec::new())),
             xkb_context: Some(xkbcommon::xkb::Context::new(xkbcommon::xkb::CONTEXT_NO_FLAGS)),
             xkb_keymap: None,
             xkb_state: None,
@@ -271,60 +265,6 @@ impl AppState {
 
     fn find_output_index_by_proxy_id(&self, proxy_id: u32) -> Option<usize> {
         self.outputs.iter().position(|o| o.proxy_id == proxy_id)
-    }
-
-    fn keysym_to_key(&self, keysym: xkbcommon::xkb::Keysym) -> VirtualKey {
-        use xkbcommon::xkb::keysym_get_name;
-        let name = keysym_get_name(keysym);
-        match name.as_str() {
-            "a" => VirtualKey::A, "b" => VirtualKey::B, "c" => VirtualKey::C,
-            "d" => VirtualKey::D, "e" => VirtualKey::E, "f" => VirtualKey::F,
-            "g" => VirtualKey::G, "h" => VirtualKey::H, "i" => VirtualKey::I,
-            "j" => VirtualKey::J, "k" => VirtualKey::K, "l" => VirtualKey::L,
-            "m" => VirtualKey::M, "n" => VirtualKey::N, "o" => VirtualKey::O,
-            "p" => VirtualKey::P, "q" => VirtualKey::Q, "r" => VirtualKey::R,
-            "s" => VirtualKey::S, "t" => VirtualKey::T, "u" => VirtualKey::U,
-            "v" => VirtualKey::V, "w" => VirtualKey::W, "x" => VirtualKey::X,
-            "y" => VirtualKey::Y, "z" => VirtualKey::Z,
-            "A" => VirtualKey::A, "B" => VirtualKey::B, "C" => VirtualKey::C,
-            "D" => VirtualKey::D, "E" => VirtualKey::E, "F" => VirtualKey::F,
-            "G" => VirtualKey::G, "H" => VirtualKey::H, "I" => VirtualKey::I,
-            "J" => VirtualKey::J, "K" => VirtualKey::K, "L" => VirtualKey::L,
-            "M" => VirtualKey::M, "N" => VirtualKey::N, "O" => VirtualKey::O,
-            "P" => VirtualKey::P, "Q" => VirtualKey::Q, "R" => VirtualKey::R,
-            "S" => VirtualKey::S, "T" => VirtualKey::T, "U" => VirtualKey::U,
-            "V" => VirtualKey::V, "W" => VirtualKey::W, "X" => VirtualKey::X,
-            "Y" => VirtualKey::Y, "Z" => VirtualKey::Z,
-            "0" => VirtualKey::Key0, "1" => VirtualKey::Key1, "2" => VirtualKey::Key2,
-            "3" => VirtualKey::Key3, "4" => VirtualKey::Key4, "5" => VirtualKey::Key5,
-            "6" => VirtualKey::Key6, "7" => VirtualKey::Key7, "8" => VirtualKey::Key8,
-            "9" => VirtualKey::Key9,
-            "F1" => VirtualKey::F1, "F2" => VirtualKey::F2, "F3" => VirtualKey::F3,
-            "F4" => VirtualKey::F4, "F5" => VirtualKey::F5, "F6" => VirtualKey::F6,
-            "F7" => VirtualKey::F7, "F8" => VirtualKey::F8, "F9" => VirtualKey::F9,
-            "F10" => VirtualKey::F10, "F11" => VirtualKey::F11, "F12" => VirtualKey::F12,
-            "Control_L" => VirtualKey::ControlLeft, "Control_R" => VirtualKey::ControlRight,
-            "Shift_L" => VirtualKey::ShiftLeft, "Shift_R" => VirtualKey::ShiftRight,
-            "Alt_L" => VirtualKey::AltLeft, "Alt_R" => VirtualKey::AltRight,
-            "Super_L" => VirtualKey::SuperLeft, "Super_R" => VirtualKey::SuperRight,
-            "Tab" => VirtualKey::Tab, "Escape" => VirtualKey::Escape,
-            "space" => VirtualKey::Space, "Return" => VirtualKey::Enter,
-            "BackSpace" => VirtualKey::Backspace, "Delete" => VirtualKey::Delete,
-            "Insert" => VirtualKey::Insert, "Home" => VirtualKey::Home,
-            "End" => VirtualKey::End, "Page_Up" => VirtualKey::PageUp,
-            "Page_Down" => VirtualKey::PageDown,
-            "Up" => VirtualKey::Up, "Down" => VirtualKey::Down,
-            "Left" => VirtualKey::Left, "Right" => VirtualKey::Right,
-            "minus" => VirtualKey::Minus, "equal" => VirtualKey::Equal,
-            "bracketleft" => VirtualKey::LeftBracket, "bracketright" => VirtualKey::RightBracket,
-            "backslash" => VirtualKey::Backslash, "semicolon" => VirtualKey::Semicolon,
-            "apostrophe" => VirtualKey::Quote, "comma" => VirtualKey::Comma,
-            "period" => VirtualKey::Period, "slash" => VirtualKey::Slash,
-            "grave" => VirtualKey::Backtick, "Caps_Lock" => VirtualKey::CapsLock,
-            "Scroll_Lock" => VirtualKey::ScrollLock, "Pause" => VirtualKey::Pause,
-            "Print" => VirtualKey::PrintScreen,
-            _ => VirtualKey::Unknown(0),
-        }
     }
 }
 
@@ -362,7 +302,6 @@ fn run_wayland_event_loop(
     };
 
     let mut state = AppState::new();
-    let keyboard_events = state.keyboard_events.clone();
 
     let registry = globals.registry();
     for g in &all_globals {
@@ -425,15 +364,10 @@ fn run_wayland_event_loop(
     let mut current_combos: Vec<ShortcutCombo> = Vec::new();
     let mut running = true;
 
-    let mut processor = DefaultEventProcessor::new(ProcessorConfig {
-        group_shortcuts: true,
-        history_length: 3,
-        dedup_window: Duration::from_millis(50),
-    });
-
     if !state.outputs.is_empty() {
         match create_layer_surface(&wayland_globals, &config, &state, &qh) {
             Ok((s, ls, _scale)) => {
+                eprintln!("DEBUG: Layer surface created successfully");
                 surface = Some(s);
                 layer_surface = Some(ls);
             }
@@ -450,6 +384,7 @@ fn run_wayland_event_loop(
     info!("EchoInput running — press keys to see overlay");
 
     let mut configure_received = state.configured;
+    let start_time = std::time::Instant::now();
 
     loop {
         {
@@ -459,17 +394,30 @@ fn run_wayland_event_loop(
                 revents: 0,
             };
             let _ = unsafe { libc::poll(&mut pollfd, 1, 5) };
-            if pollfd.revents & libc::POLLIN != 0 {
-                if let Some(guard) = event_queue.prepare_read() {
-                    let _ = guard.read();
+        if pollfd.revents & libc::POLLIN != 0 {
+            if let Some(guard) = event_queue.prepare_read() {
+                if let Err(e) = guard.read() {
+                    eprintln!("DEBUG: guard.read() failed: {:?}", e);
                 }
             }
         }
-        let _ = event_queue.dispatch_pending(&mut state);
+    }
+    if let Err(e) = event_queue.dispatch_pending(&mut state) {
+        eprintln!("DEBUG: dispatch_pending failed: {:?}", e);
+    }
+
+    if !state.configured && start_time.elapsed() > std::time::Duration::from_secs(5) && !configure_received {
+        configure_received = true;
+        warn!("No configure received after 5s — compositor may not support layer shell");
+    }
 
         if !configure_received && state.configured {
             configure_received = true;
-            info!("Compositor configure received — overlay ready");
+            info!("Compositor configure received — overlay ready (w={} h={})",
+                state.configure_width, state.configure_height);
+            if !current_combos.is_empty() {
+                animation.show(config.opacity);
+            }
         }
 
         while let Ok(cmd) = cmd_rx.try_recv() {
@@ -502,53 +450,35 @@ fn run_wayland_event_loop(
             break;
         }
 
-        {
-            let mut events = keyboard_events.lock().unwrap();
-            for event in events.drain(..) {
-                let processed = processor.process(event);
-                for pe in processed {
-                    match pe {
-                        input_core::events::ProcessedEvent::Shortcut(combo) => {
-                            debug!(combo = %combo.display, "Shortcut detected");
-                            current_combos.clear();
-                            current_combos.push(combo);
-                            animation.show(config.opacity);
-                        }
-                        input_core::events::ProcessedEvent::RawKey(kbd) => {
-                            let combo = ShortcutCombo::new(
-                                ModifierState::default(),
-                                Some(kbd.key),
-                            );
-                            debug!(combo = %combo.display, "Key detected");
-                            current_combos.clear();
-                            current_combos.push(combo);
-                            animation.show(config.opacity);
-                        }
-                        input_core::events::ProcessedEvent::ModifierChange(_) => {}
-                    }
-                }
-            }
-        }
-
         if !state.configured {
             animation.tick();
         } else {
-            let needs_redraw = animation.tick();
+            let _needs_redraw = animation.tick();
             let opacity = animation.current_opacity();
 
-            if needs_redraw && animation.is_visible() {
-                if let (Some(ref s), Some(ref ls)) = (&surface, &layer_surface) {
+            let has_content = !current_combos.is_empty() && animation.is_visible();
+
+            if has_content {
+                if let (Some(ref s), Some(ref _ls)) = (&surface, &layer_surface) {
                     let (content_w, content_h, _keycap_count) =
                         compute_surface_size(&current_combos);
 
-                    eprintln!("DEBUG: Rendering overlay content_w={} content_h={} combos={}", content_w, content_h, current_combos.len());
+
 
                     if content_w == 0 || content_h == 0 {
                         s.attach(None, 0, 0);
                         s.commit();
                     } else {
-                        let render_w = state.configure_width.max(state.outputs.first().map(|o| o.width).unwrap_or(1920) as u32) as i32;
-                        let render_h = state.configure_height.max(state.outputs.first().map(|o| o.height).unwrap_or(1080) as u32) as i32;
+                        let render_w = if state.configure_width > 0 {
+                            state.configure_width as i32
+                        } else {
+                            state.outputs.first().map(|o| o.width).unwrap_or(1920)
+                        };
+                        let render_h = if state.configure_height > 0 {
+                            state.configure_height as i32
+                        } else {
+                            state.outputs.first().map(|o| o.height).unwrap_or(1080)
+                        };
 
                         let needs_realloc = match &shm_buf {
                             Some(b) => render_w > b.width || render_h > b.height,
@@ -571,7 +501,13 @@ fn run_wayland_event_loop(
                         }
 
                         if let Some(ref buf) = shm_buf {
-                            let offset_x = ((buf.width - content_w) / 2).max(0) as f64;
+                            let offset_x = match config.position {
+                                OverlayPosition::TopLeft | OverlayPosition::BottomLeft => SURFACE_MARGIN,
+                                OverlayPosition::TopRight | OverlayPosition::BottomRight => {
+                                    (buf.width as f64 - content_w as f64 - SURFACE_MARGIN).max(0.0)
+                                }
+                                _ => ((buf.width - content_w) / 2).max(0) as f64,
+                            };
                             render_keycaps(
                                 buf,
                                 &current_combos,
@@ -579,6 +515,7 @@ fn run_wayland_event_loop(
                                 animation.slide_offset(),
                                 animation.scale(),
                                 offset_x,
+                                config.position,
                             );
                             s.attach(Some(&buf.buffer), 0, 0);
                             s.damage_buffer(0, 0, buf.width, buf.height);
@@ -661,7 +598,6 @@ fn create_layer_surface(
         zwlr_layer_surface_v1::KeyboardInteractivity::None,
     );
 
-    let is_centered = is_centered_position(config.position);
     let output_width = state.outputs.first().map(|o| o.width).unwrap_or(1920);
     let output_height = state.outputs.first().map(|o| o.height).unwrap_or(1080);
     layer_surface.set_size(output_width as u32, output_height as u32);
@@ -680,16 +616,8 @@ fn position_to_anchor(config: &OverlayConfig) -> zwlr_layer_surface_v1::Anchor {
         OverlayPosition::BottomLeft => Anchor::Bottom | Anchor::Left,
         OverlayPosition::BottomRight => Anchor::Bottom | Anchor::Right,
         OverlayPosition::BottomCenter => Anchor::Bottom | Anchor::Left | Anchor::Right,
-        OverlayPosition::Center => Anchor::Bottom | Anchor::Left | Anchor::Right,
+        OverlayPosition::Center => Anchor::Top | Anchor::Left | Anchor::Right,
     }
-}
-
-fn is_centered_position(pos: OverlayPosition) -> bool {
-    matches!(pos,
-        OverlayPosition::BottomCenter
-        | OverlayPosition::TopCenter
-        | OverlayPosition::Center
-    )
 }
 
 fn combo_to_key_parts(combo: &ShortcutCombo) -> Vec<String> {
@@ -775,7 +703,7 @@ fn measure_text_width(label: &str) -> f64 {
     }
 }
 
-fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], opacity: f32, slide_offset: f32, scale: f32, offset_x: f64) {
+fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], opacity: f32, slide_offset: f32, scale: f32, offset_x: f64, position: OverlayPosition) {
     let width = shm.width;
     let height = shm.height;
 
@@ -789,7 +717,6 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], opacity: f32, slide
         };
 
     let visible: Vec<&ShortcutCombo> = combos.iter().take(MAX_HISTORY_ROWS).collect();
-    let keycap_h = FONT_SIZE + KEYCAP_PADDING_Y * 2.0;
 
     {
         let cr = match cairo::Context::new(&image_surface) {
@@ -824,7 +751,23 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], opacity: f32, slide
         );
         cr.set_font_size(FONT_SIZE);
 
-        let mut y = SURFACE_MARGIN + slide_y;
+        // Compute content height for vertical positioning
+        let keycap_h = FONT_SIZE + KEYCAP_PADDING_Y * 2.0;
+        let content_h = visible.len() as f64 * keycap_h
+            + (visible.len().saturating_sub(1)) as f64 * ROW_GAP;
+
+        // Compute initial Y based on position
+        let mut y = match position {
+            OverlayPosition::BottomLeft | OverlayPosition::BottomRight | OverlayPosition::BottomCenter => {
+                (height as f64 - content_h - SURFACE_MARGIN + slide_y).max(0.0)
+            }
+            OverlayPosition::Center => {
+                ((height as f64 - content_h) / 2.0 + slide_y).max(0.0)
+            }
+            OverlayPosition::TopLeft | OverlayPosition::TopRight | OverlayPosition::TopCenter => {
+                SURFACE_MARGIN + slide_y
+            }
+        };
 
         for (row_idx, combo) in visible.iter().enumerate() {
             let parts = combo_to_key_parts(combo);
@@ -1106,45 +1049,9 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppState {
                 key,
                 state: key_state,
             } => {
-                let pressed = match key_state {
-                    WEnum::Value(wl_keyboard::KeyState::Pressed) => true,
-                    WEnum::Value(wl_keyboard::KeyState::Released) => false,
-                    _ => return,
-                };
-
-                let keycode = xkbcommon::xkb::Keycode::new(key + 8);
-
-                let virtual_key = if let Some(ref xkb_state) = state.xkb_state {
-                    let mut xkb = xkb_state.clone();
-                    xkb.update_key(
-                        keycode,
-                        if pressed {
-                            xkbcommon::xkb::KeyDirection::Down
-                        } else {
-                            xkbcommon::xkb::KeyDirection::Up
-                        },
-                    );
-                    let keysym = xkb.key_get_one_sym(keycode);
-                    state.keysym_to_key(keysym)
-                } else {
-                    use crate::keymap_compat::scancode_to_key;
-                    scancode_to_key(key + 8)
-                };
-
-                let key_event = InputEvent::Keyboard(KeyboardEvent {
-                    key: virtual_key,
-                    state: if pressed {
-                        KeyState::Pressed
-                    } else {
-                        KeyState::Released
-                    },
-                    timestamp: std::time::SystemTime::now(),
-                    native_code: key + 8,
-                });
-
-                if let Ok(mut events) = state.keyboard_events.lock() {
-                    events.push(key_event);
-                }
+                // Key events from wl_keyboard are not used — input comes from evdev.
+                // This handler exists only for protocol compliance.
+                let _ = (key, key_state);
             }
             wl_keyboard::Event::Modifiers {
                 serial: _,
