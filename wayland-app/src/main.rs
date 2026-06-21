@@ -14,6 +14,90 @@ use std::time::Duration;
 use tokio::sync::broadcast::error::RecvError;
 use tracing::{error, info, warn};
 
+// ── Theme Colors ───────────────────────────────────────────────
+
+#[derive(Clone)]
+struct Theme {
+    bg: egui::Color32,
+    bg_card: egui::Color32,
+    bg_hover: egui::Color32,
+    bg_input: egui::Color32,
+    accent: egui::Color32,
+    text: egui::Color32,
+    text_dim: egui::Color32,
+    text_muted: egui::Color32,
+    border: egui::Color32,
+    separator: egui::Color32,
+    tab_active: egui::Color32,
+    tab_inactive: egui::Color32,
+    success: egui::Color32,
+}
+
+impl Theme {
+    fn dark() -> Self {
+        Self {
+            bg: egui::Color32::from_rgb(32, 33, 36),
+            bg_card: egui::Color32::from_rgb(45, 46, 50),
+            bg_hover: egui::Color32::from_rgb(55, 56, 62),
+            bg_input: egui::Color32::from_rgb(38, 39, 43),
+            accent: egui::Color32::from_rgb(88, 166, 255),
+            text: egui::Color32::from_rgb(232, 232, 232),
+            text_dim: egui::Color32::from_rgb(180, 180, 185),
+            text_muted: egui::Color32::from_rgb(120, 120, 128),
+            border: egui::Color32::from_rgb(55, 56, 62),
+            separator: egui::Color32::from_rgb(50, 51, 56),
+            tab_active: egui::Color32::from_rgb(88, 166, 255),
+            tab_inactive: egui::Color32::from_rgb(140, 140, 148),
+            success: egui::Color32::from_rgb(76, 175, 80),
+        }
+    }
+}
+
+fn apply_theme(ctx: &egui::Context, theme: &Theme) {
+    let mut style = (*ctx.style()).clone();
+
+    // Visuals
+    let visuals = &mut style.visuals;
+    visuals.dark_mode = true;
+    visuals.override_text_color = Some(theme.text);
+    visuals.widgets.noninteractive.bg_fill = theme.bg_card;
+    visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, theme.text_dim);
+    visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(0.5, theme.border);
+    visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(6);
+
+    visuals.widgets.inactive.bg_fill = theme.bg_input;
+    visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, theme.text);
+    visuals.widgets.inactive.bg_stroke = egui::Stroke::new(0.5, theme.border);
+    visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(6);
+
+    visuals.widgets.hovered.bg_fill = theme.bg_hover;
+    visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, theme.text);
+    visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, theme.accent);
+    visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(6);
+
+    visuals.widgets.active.bg_fill = theme.accent;
+    visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
+    visuals.widgets.active.corner_radius = egui::CornerRadius::same(6);
+
+    visuals.selection.bg_fill = theme.accent.linear_multiply(0.3);
+    visuals.selection.stroke = egui::Stroke::new(1.0, theme.accent);
+
+    visuals.extreme_bg_color = theme.bg;
+    visuals.faint_bg_color = theme.bg_card;
+    visuals.striped = false;
+
+    // Sliders
+    visuals.slider_trailing_fill = true;
+
+    // Spacing
+    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+    style.spacing.indent = 18.0;
+    style.spacing.button_padding = egui::vec2(12.0, 6.0);
+    style.spacing.window_margin = egui::Margin::same(16);
+
+    ctx.set_style(style);
+}
+
 fn parse_log_level() -> String {
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--trace") {
@@ -26,7 +110,7 @@ fn parse_log_level() -> String {
 }
 
 fn print_help() {
-    println!("EchoInput — keyboard visualization overlay for Wayland");
+    println!("EchoInput — keyboard visualization overlay");
     println!();
     println!("USAGE:");
     println!("  echoinput                 Run the overlay (default)");
@@ -38,7 +122,7 @@ fn print_help() {
     println!("  --trace     Enable trace logging (very verbose)");
     println!();
     println!("NOTES:");
-    println!("  - Requires read access to /dev/input/event* devices");
+    println!("  - Requires read access to /dev/input/event* devices (Linux)");
     println!("  - If overlay doesn't appear, check: ls -la /dev/input/event*");
     println!("  - Fix permissions: sudo usermod -aG input $USER  (then relogin)");
     println!("  - Config saved to: ~/.config/echoinput/config.toml");
@@ -90,9 +174,7 @@ fn run_overlay(config: OverlayConfig) {
             return;
         }
 
-        // Start evdev keyboard capture
         let mut capture = EvdevCapture::with_shutdown(shutdown.clone());
-
         let mut input_rx = capture.subscribe();
 
         if let Err(e) = capture.start().await {
@@ -115,7 +197,6 @@ fn run_overlay(config: OverlayConfig) {
         let ctrl_c = tokio::signal::ctrl_c();
         tokio::pin!(ctrl_c);
 
-        // Process keyboard events from evdev and forward to overlay
         loop {
             tokio::select! {
                 result = input_rx.recv() => {
@@ -159,7 +240,6 @@ fn run_overlay(config: OverlayConfig) {
                 }
             }
 
-            // Also check shutdown flag (set by evdev Ctrl+C detection in terminal)
             if shutdown.load(Ordering::Relaxed) {
                 eprintln!("\nShutting down...");
                 break;
@@ -178,8 +258,8 @@ fn run_settings_gui(initial_config: FileConfig) {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([700.0, 550.0])
-            .with_min_inner_size([600.0, 450.0])
+            .with_inner_size([520.0, 480.0])
+            .with_min_inner_size([420.0, 380.0])
             .with_title("EchoInput Settings"),
         ..Default::default()
     };
@@ -187,7 +267,11 @@ fn run_settings_gui(initial_config: FileConfig) {
     eframe::run_native(
         "EchoInput Settings",
         options,
-        Box::new(move |_cc| Ok(Box::new(SettingsApp::new(initial_config)))),
+        Box::new(move |cc| {
+            let theme = Theme::dark();
+            apply_theme(&cc.egui_ctx, &theme);
+            Ok(Box::new(SettingsApp::new(initial_config, theme)))
+        }),
     )
     .unwrap();
 }
@@ -201,8 +285,25 @@ enum SettingsTab {
     About,
 }
 
+impl SettingsTab {
+    fn label(self) -> &'static str {
+        match self {
+            Self::General => "General",
+            Self::Position => "Position",
+            Self::Keycap => "Keycap",
+            Self::Display => "Display",
+            Self::About => "About",
+        }
+    }
+
+    fn all() -> &'static [SettingsTab] {
+        &[Self::General, Self::Position, Self::Keycap, Self::Display, Self::About]
+    }
+}
+
 struct SettingsApp {
     config: FileConfig,
+    theme: Theme,
     active_tab: SettingsTab,
     position_index: usize,
     scale_index: usize,
@@ -213,6 +314,7 @@ struct SettingsApp {
     text_variant_index: usize,
     preset_index: usize,
     save_status: String,
+    save_status_time: Option<std::time::Instant>,
 }
 
 const POSITIONS: &[&str] = &[
@@ -233,7 +335,7 @@ const TEXT_CAPS: &[&str] = &["Uppercase", "Capitalize", "Lowercase"];
 const TEXT_VARIANTS: &[&str] = &["Full", "Short", "Icon"];
 
 impl SettingsApp {
-    fn new(config: FileConfig) -> Self {
+    fn new(config: FileConfig, theme: Theme) -> Self {
         let position_index = config
             .position
             .as_deref()
@@ -270,11 +372,9 @@ impl SettingsApp {
             .and_then(|v| TEXT_VARIANTS.iter().position(|&x| x == v))
             .unwrap_or(0);
 
-        let _preset_names = ThemePreset::name_list();
-        let preset_index = 0;
-
         Self {
             config,
+            theme,
             active_tab: SettingsTab::General,
             position_index,
             scale_index,
@@ -283,8 +383,9 @@ impl SettingsApp {
             animation_type_index,
             text_caps_index,
             text_variant_index,
-            preset_index,
+            preset_index: 0,
             save_status: String::new(),
+            save_status_time: None,
         }
     }
 
@@ -316,7 +417,6 @@ impl SettingsApp {
         self.config.border_radius = Some(preset.border.radius);
         self.config.border_modifier_color = Some(preset.border.modifier_color.clone());
 
-        // Update UI indices
         self.keycap_style_index = KEYCAP_STYLES
             .iter()
             .position(|&s| s == format!("{:?}", preset.keycap_style))
@@ -335,319 +435,529 @@ impl SettingsApp {
         self.sync_to_config();
         match self.config.save() {
             Ok(()) => {
-                self.save_status = "Settings saved!".into();
+                self.save_status = "Saved".into();
+                self.save_status_time = Some(std::time::Instant::now());
             }
             Err(e) => {
                 self.save_status = format!("Error: {}", e);
+                self.save_status_time = Some(std::time::Instant::now());
             }
         }
     }
 
-    fn sidebar_button(ui: &mut egui::Ui, label: &str, tab: SettingsTab, active: &mut SettingsTab) {
-        let is_active = *active == tab;
-        let response = ui.selectable_label(is_active, label);
-        if response.clicked() {
-            *active = tab;
-        }
+    // ── UI Helpers ─────────────────────────────────────────────
+
+    fn section_header(ui: &mut egui::Ui, theme: &Theme, label: &str) {
+        ui.add_space(4.0);
+        let (rect, _) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), 0.0),
+            egui::Sense::hover(),
+        );
+        ui.painter().text(
+            rect.min,
+            egui::Align2::LEFT_CENTER,
+            label,
+            egui::FontId::proportional(14.0),
+            theme.text_dim,
+        );
+        ui.add_space(18.0);
     }
 
-    fn color_edit(ui: &mut egui::Ui, label: &str, value: &mut String) {
+    fn card<F: FnOnce(&mut egui::Ui)>(
+        ui: &mut egui::Ui,
+        theme: &Theme,
+        content: F,
+    ) -> egui::Response {
+        let margin = egui::Margin::same(12);
+        let frame = egui::Frame::NONE
+            .fill(theme.bg_card)
+            .corner_radius(egui::CornerRadius::same(8))
+            .stroke(egui::Stroke::new(0.5, theme.border))
+            .inner_margin(margin);
+        frame.show(ui, |ui| {
+            content(ui);
+        })
+        .response
+    }
+
+    fn labeled_slider(
+        ui: &mut egui::Ui,
+        theme: &Theme,
+        label: &str,
+        value: &mut f32,
+        range: std::ops::RangeInclusive<f32>,
+        suffix: &str,
+    ) {
         ui.horizontal(|ui| {
-            ui.label(label);
-            let mut color = value.clone();
-            let response = ui.text_edit_singleline(&mut color);
-            if response.changed() {
-                *value = color;
-            }
-            // Show color preview
-            if let Some(hex) = value.strip_prefix('#') {
-                if hex.len() >= 6 {
-                    let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0) as f32 / 255.0;
-                    let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0) as f32 / 255.0;
-                    let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0) as f32 / 255.0;
-                    let (rect, _) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
-                    ui.painter().rect_filled(rect, 2.0, egui::Color32::from_rgb(
-                        (r * 255.0) as u8,
-                        (g * 255.0) as u8,
-                        (b * 255.0) as u8,
-                    ));
+            ui.label(egui::RichText::new(label).color(theme.text_dim).size(13.0));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(
+                    egui::RichText::new(format!("{:.0}{}", value, suffix))
+                        .color(theme.accent)
+                        .size(13.0)
+                        .strong(),
+                );
+            });
+        });
+        ui.spacing_mut().slider_width = ui.available_width();
+        ui.add(
+            egui::Slider::new(value, range)
+                .suffix(suffix)
+                .show_value(false),
+        );
+    }
+
+    fn labeled_slider_f64(
+        ui: &mut egui::Ui,
+        theme: &Theme,
+        label: &str,
+        value: &mut f64,
+        range: std::ops::RangeInclusive<f64>,
+        suffix: &str,
+    ) {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(label).color(theme.text_dim).size(13.0));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(
+                    egui::RichText::new(format!("{:.0}{}", value, suffix))
+                        .color(theme.accent)
+                        .size(13.0)
+                        .strong(),
+                );
+            });
+        });
+        ui.spacing_mut().slider_width = ui.available_width();
+        ui.add(
+            egui::Slider::new(value, range)
+                .suffix(suffix)
+                .show_value(false),
+        );
+    }
+
+    fn dropdown(
+        ui: &mut egui::Ui,
+        theme: &Theme,
+        id: &str,
+        label: &str,
+        options: &[&str],
+        selected: &mut usize,
+    ) {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(label).color(theme.text_dim).size(13.0));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                egui::ComboBox::from_id_salt(id)
+                    .selected_text(egui::RichText::new(options[*selected]).color(theme.text).size(13.0))
+                    .width(130.0)
+                    .show_ui(ui, |ui| {
+                        for (i, &opt) in options.iter().enumerate() {
+                            ui.selectable_value(selected, i, egui::RichText::new(opt).size(13.0));
+                        }
+                    });
+            });
+        });
+    }
+
+    fn color_row(ui: &mut egui::Ui, theme: &Theme, label: &str, value: &mut String) {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(label).color(theme.text_dim).size(13.0));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Color preview swatch
+                if let Some(hex) = value.strip_prefix('#') {
+                    if hex.len() >= 6 {
+                        let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
+                        let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
+                        let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
+                        let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
+                        ui.painter().rect_filled(
+                            rect,
+                            egui::CornerRadius::same(3),
+                            egui::Color32::from_rgb(r, g, b),
+                        );
+                        ui.add_space(4.0);
+                    }
                 }
-            }
+                let mut color = value.clone();
+                let response = ui.add(
+                    egui::TextEdit::singleline(&mut color)
+                        .desired_width(80.0)
+                        .font(egui::FontId::monospace(12.0)),
+                );
+                if response.changed() {
+                    *value = color;
+                }
+            });
+        });
+    }
+
+    fn toggle_row(ui: &mut egui::Ui, theme: &Theme, label: &str, value: &mut bool) {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(label).color(theme.text_dim).size(13.0));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let response = ui.toggle_value(value, "");
+                if response.changed() {
+                    // value is already updated by toggle
+                }
+            });
+        });
+    }
+
+    fn save_bar(ui: &mut egui::Ui, theme: &Theme, ctx: &egui::Context, app: &mut SettingsApp) {
+        ui.add_space(8.0);
+        let frame = egui::Frame::NONE
+            .fill(theme.bg_card)
+            .corner_radius(egui::CornerRadius::same(8))
+            .stroke(egui::Stroke::new(0.5, theme.border))
+            .inner_margin(egui::Margin::same(12));
+        frame.show(ui, |ui| {
+            ui.horizontal(|ui| {
+                let save_btn = ui.add(
+                    egui::Button::new(
+                        egui::RichText::new("Save").size(13.0).strong(),
+                    )
+                    .fill(theme.accent)
+                    .corner_radius(egui::CornerRadius::same(6))
+                    .min_size(egui::vec2(80.0, 30.0)),
+                );
+                if save_btn.clicked() {
+                    app.save();
+                }
+
+                let close_btn = ui.add(
+                    egui::Button::new(
+                        egui::RichText::new("Save & Close").size(13.0),
+                    )
+                    .fill(theme.bg_hover)
+                    .corner_radius(egui::CornerRadius::same(6))
+                    .min_size(egui::vec2(100.0, 30.0)),
+                );
+                if close_btn.clicked() {
+                    app.sync_to_config();
+                    if app.config.save().is_ok() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                }
+
+                // Show save status with auto-fade
+                if !app.save_status.is_empty() {
+                    let show = match app.save_status_time {
+                        Some(t) => t.elapsed() < std::time::Duration::from_secs(3),
+                        None => false,
+                    };
+                    if show {
+                        let color = if app.save_status == "Saved" {
+                            theme.success
+                        } else {
+                            egui::Color32::from_rgb(255, 100, 100)
+                        };
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(
+                                egui::RichText::new(&app.save_status)
+                                    .color(color)
+                                    .size(12.0),
+                            );
+                        });
+                    } else {
+                        app.save_status.clear();
+                    }
+                }
+            });
         });
     }
 }
 
 impl eframe::App for SettingsApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::SidePanel::left("sidebar").show(ctx, |ui| {
-            ui.heading("EchoInput");
-            ui.add_space(8.0);
-            Self::sidebar_button(ui, "General", SettingsTab::General, &mut self.active_tab);
-            Self::sidebar_button(ui, "Position", SettingsTab::Position, &mut self.active_tab);
-            Self::sidebar_button(ui, "Keycap Style", SettingsTab::Keycap, &mut self.active_tab);
-            Self::sidebar_button(ui, "Display", SettingsTab::Display, &mut self.active_tab);
-            Self::sidebar_button(ui, "About", SettingsTab::About, &mut self.active_tab);
-        });
+        let theme = self.theme.clone();
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            match self.active_tab {
-                SettingsTab::General => self.render_general_tab(ui, ctx),
-                SettingsTab::Position => self.render_position_tab(ui, ctx),
-                SettingsTab::Keycap => self.render_keycap_tab(ui, ctx),
-                SettingsTab::Display => self.render_display_tab(ui, ctx),
-                SettingsTab::About => self.render_about_tab(ui),
-            }
-        });
+        // ── Top Tab Bar ──
+        egui::TopBottomPanel::top("tab_bar")
+            .frame(
+                egui::Frame::NONE
+                    .fill(theme.bg)
+                    .stroke(egui::Stroke::new(0.5, theme.separator))
+                    .inner_margin(egui::Margin::symmetric(16, 0)),
+            )
+            .show(ctx, |ui| {
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    for &tab in SettingsTab::all() {
+                        let is_active = self.active_tab == tab;
+                        let text_color = if is_active {
+                            theme.tab_active
+                        } else {
+                            theme.tab_inactive
+                        };
+                        let btn = ui.add(
+                            egui::Button::new(
+                                egui::RichText::new(tab.label())
+                                    .color(text_color)
+                                    .size(13.0)
+                                    .strong(),
+                            )
+                            .fill(egui::Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE),
+                        );
+
+                        // Underline for active tab
+                        if is_active {
+                            let rect = btn.rect;
+                            ui.painter().line_segment(
+                                [
+                                    egui::pos2(rect.left(), rect.bottom()),
+                                    egui::pos2(rect.right(), rect.bottom()),
+                                ],
+                                egui::Stroke::new(2.0, theme.tab_active),
+                            );
+                        }
+
+                        if btn.clicked() {
+                            self.active_tab = tab;
+                        }
+                    }
+                });
+                ui.add_space(4.0);
+            });
+
+        // ── Content Panel ──
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::NONE
+                    .fill(theme.bg)
+                    .inner_margin(egui::Margin::same(16)),
+            )
+            .show(ctx, |ui| {
+                match self.active_tab {
+                    SettingsTab::General => self.render_general_tab(ui, ctx),
+                    SettingsTab::Position => self.render_position_tab(ui, ctx),
+                    SettingsTab::Keycap => self.render_keycap_tab(ui, ctx),
+                    SettingsTab::Display => self.render_display_tab(ui, ctx),
+                    SettingsTab::About => self.render_about_tab(ui),
+                }
+            });
     }
 }
 
 impl SettingsApp {
     fn render_general_tab(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.heading("General Settings");
-        ui.separator();
+        let theme = self.theme.clone();
 
-        ui.add_space(8.0);
-        ui.label("Theme:");
-        egui::ComboBox::from_id_salt("theme")
-            .selected_text(THEMES[self.theme_index])
-            .show_ui(ui, |ui| {
-                for (i, &theme) in THEMES.iter().enumerate() {
-                    ui.selectable_value(&mut self.theme_index, i, theme);
-                }
-            });
+        ui.add_space(4.0);
+        Self::card(ui, &theme, |ui| {
+            Self::dropdown(ui, &theme, "theme", "Theme", THEMES, &mut self.theme_index);
+            ui.add_space(4.0);
 
-        ui.add_space(8.0);
-
-        ui.label("Monitor (leave empty for default):");
-        let mut monitor = self.config.monitor.clone().unwrap_or_default();
-        ui.text_edit_singleline(&mut monitor);
-        self.config.monitor = if monitor.is_empty() {
-            None
-        } else {
-            Some(monitor)
-        };
-
-        ui.add_space(16.0);
-        ui.separator();
-
-        ui.horizontal(|ui| {
-            if ui.button("Save").clicked() {
-                self.save();
-            }
-            if ui.button("Save & Close").clicked() {
-                self.sync_to_config();
-                if self.config.save().is_ok() {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                }
+            ui.label(egui::RichText::new("Monitor").color(theme.text_dim).size(13.0));
+            ui.add_space(2.0);
+            let mut monitor = self.config.monitor.clone().unwrap_or_default();
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut monitor)
+                    .hint_text("Default")
+                    .desired_width(ui.available_width())
+                    .font(egui::FontId::proportional(13.0)),
+            );
+            if response.changed() {
+                self.config.monitor = if monitor.is_empty() {
+                    None
+                } else {
+                    Some(monitor)
+                };
             }
         });
 
-        if !self.save_status.is_empty() {
-            ui.label(&self.save_status);
-        }
+        Self::save_bar(ui, &theme, ctx, self);
     }
 
     fn render_position_tab(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.heading("Position & Animation");
-        ui.separator();
+        let theme = self.theme.clone();
 
-        ui.add_space(8.0);
-        ui.label("Overlay Position:");
-        egui::ComboBox::from_id_salt("position")
-            .selected_text(POSITIONS[self.position_index])
-            .show_ui(ui, |ui| {
-                for (i, &pos) in POSITIONS.iter().enumerate() {
-                    ui.selectable_value(&mut self.position_index, i, pos);
-                }
-            });
+        ui.add_space(4.0);
+        Self::card(ui, &theme, |ui| {
+            Self::dropdown(ui, &theme, "position", "Position", POSITIONS, &mut self.position_index);
+            ui.add_space(4.0);
+            Self::dropdown(ui, &theme, "scale", "Scale", SCALES, &mut self.scale_index);
 
-        ui.add_space(8.0);
+            ui.add_space(4.0);
+            let mut margin_x = self.config.margin_x.unwrap_or(16.0);
+            Self::labeled_slider(ui, &theme, "Margin X", &mut margin_x, 0.0..=100.0, "px");
+            self.config.margin_x = Some(margin_x);
 
-        ui.label("Scale:");
-        egui::ComboBox::from_id_salt("scale")
-            .selected_text(SCALES[self.scale_index])
-            .show_ui(ui, |ui| {
-                for (i, &scale) in SCALES.iter().enumerate() {
-                    ui.selectable_value(&mut self.scale_index, i, scale);
-                }
-            });
-
-        ui.add_space(8.0);
-
-        let mut margin_x = self.config.margin_x.unwrap_or(16.0);
-        ui.label(format!("Horizontal Margin: {:.0}px", margin_x));
-        ui.add(egui::Slider::new(&mut margin_x, 0.0..=100.0).suffix("px"));
-        self.config.margin_x = Some(margin_x);
-
-        let mut margin_y = self.config.margin_y.unwrap_or(16.0);
-        ui.label(format!("Vertical Margin: {:.0}px", margin_y));
-        ui.add(egui::Slider::new(&mut margin_y, 0.0..=100.0).suffix("px"));
-        self.config.margin_y = Some(margin_y);
-
-        ui.add_space(16.0);
-        ui.label("Animation:");
-        egui::ComboBox::from_id_salt("animation_type")
-            .selected_text(ANIMATION_TYPES[self.animation_type_index])
-            .show_ui(ui, |ui| {
-                for (i, &anim) in ANIMATION_TYPES.iter().enumerate() {
-                    ui.selectable_value(&mut self.animation_type_index, i, anim);
-                }
-            });
-
-        ui.add_space(8.0);
-
-        let mut anim_speed = self.config.animation_speed.unwrap_or(0.5);
-        ui.label(format!("Animation Speed: {:.2}", anim_speed));
-        ui.add(egui::Slider::new(&mut anim_speed, 0.05..=1.0));
-        self.config.animation_speed = Some(anim_speed);
-
-        ui.add_space(8.0);
-
-        let mut duration_ms = self.config.display_duration_ms.unwrap_or(1500) as f32;
-        ui.label(format!("Display Duration: {}ms", duration_ms as u64));
-        ui.add(egui::Slider::new(&mut duration_ms, 500.0..=5000.0).suffix("ms"));
-        self.config.display_duration_ms = Some(duration_ms as u64);
-
-        ui.add_space(16.0);
-        ui.separator();
-
-        ui.horizontal(|ui| {
-            if ui.button("Save").clicked() {
-                self.save();
-            }
-            if ui.button("Save & Close").clicked() {
-                self.sync_to_config();
-                if self.config.save().is_ok() {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                }
-            }
+            let mut margin_y = self.config.margin_y.unwrap_or(16.0);
+            Self::labeled_slider(ui, &theme, "Margin Y", &mut margin_y, 0.0..=100.0, "px");
+            self.config.margin_y = Some(margin_y);
         });
+
+        ui.add_space(8.0);
+        Self::card(ui, &theme, |ui| {
+            Self::dropdown(
+                ui,
+                &theme,
+                "animation_type",
+                "Animation",
+                ANIMATION_TYPES,
+                &mut self.animation_type_index,
+            );
+
+            ui.add_space(4.0);
+            let mut anim_speed = self.config.animation_speed.unwrap_or(0.5);
+            Self::labeled_slider(ui, &theme, "Speed", &mut anim_speed, 0.05..=1.0, "");
+            self.config.animation_speed = Some(anim_speed);
+
+            let mut duration_ms = self.config.display_duration_ms.unwrap_or(1500) as f32;
+            Self::labeled_slider(ui, &theme, "Duration", &mut duration_ms, 500.0..=5000.0, "ms");
+            self.config.display_duration_ms = Some(duration_ms as u64);
+        });
+
+        Self::save_bar(ui, &theme, ctx, self);
     }
 
     fn render_keycap_tab(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.heading("Keycap Style");
-        ui.separator();
+        let theme = self.theme.clone();
 
-        // ── Preset Selector ──
-        ui.add_space(4.0);
-        ui.collapsing("Theme Presets", |ui| {
+        // ── Preset ──
+        Self::card(ui, &theme, |ui| {
             let presets = ThemePreset::all();
             let preset_names: Vec<String> = presets.iter().map(|p| p.name.clone()).collect();
 
             ui.horizontal(|ui| {
-                egui::ComboBox::from_id_salt("preset")
-                    .selected_text(preset_names.get(self.preset_index).cloned().unwrap_or_default())
-                    .show_ui(ui, |ui| {
-                        for (i, name) in preset_names.iter().enumerate() {
-                            ui.selectable_value(&mut self.preset_index, i, name.as_str());
+                ui.label(
+                    egui::RichText::new("Preset")
+                        .color(theme.text_dim)
+                        .size(13.0),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let apply_btn = ui.add(
+                        egui::Button::new(
+                            egui::RichText::new("Apply").size(12.0),
+                        )
+                        .fill(theme.accent)
+                        .corner_radius(egui::CornerRadius::same(4)),
+                    );
+                    if apply_btn.clicked() {
+                        if let Some(preset) = presets.get(self.preset_index) {
+                            self.apply_preset(preset);
                         }
-                    });
-
-                if ui.button("Apply Preset").clicked() {
-                    if let Some(preset) = presets.get(self.preset_index) {
-                        self.apply_preset(preset);
                     }
-                }
+
+                    egui::ComboBox::from_id_salt("preset")
+                        .selected_text(
+                            egui::RichText::new(
+                                preset_names.get(self.preset_index).cloned().unwrap_or_default(),
+                            )
+                            .size(13.0),
+                        )
+                        .width(120.0)
+                        .show_ui(ui, |ui| {
+                            for (i, name) in preset_names.iter().enumerate() {
+                                ui.selectable_value(
+                                    &mut self.preset_index,
+                                    i,
+                                    egui::RichText::new(name.as_str()).size(13.0),
+                                );
+                            }
+                        });
+                });
             });
         });
 
-        ui.add_space(8.0);
+        ui.add_space(4.0);
 
-        // ── Keycap Style ──
-        ui.collapsing("Keycap Style", |ui| {
-            ui.label("Style:");
-            egui::ComboBox::from_id_salt("keycap_style")
-                .selected_text(KEYCAP_STYLES[self.keycap_style_index])
-                .show_ui(ui, |ui| {
-                    for (i, &style) in KEYCAP_STYLES.iter().enumerate() {
-                        ui.selectable_value(&mut self.keycap_style_index, i, style);
-                    }
-                });
+        // ── Style ──
+        Self::card(ui, &theme, |ui| {
+            Self::dropdown(
+                ui,
+                &theme,
+                "keycap_style",
+                "Style",
+                KEYCAP_STYLES,
+                &mut self.keycap_style_index,
+            );
         });
 
         ui.add_space(4.0);
 
         // ── Colors ──
-        ui.collapsing("Colors", |ui| {
-            Self::color_edit(ui, "Keycap Primary:", &mut self.config.keycap_primary.clone().unwrap_or_default());
-            Self::color_edit(ui, "Keycap Secondary:", &mut self.config.keycap_secondary.clone().unwrap_or_default());
+        Self::card(ui, &theme, |ui| {
+            Self::section_header(ui, &theme, "Colors");
+
+            Self::color_row(ui, &theme, "Primary", &mut self.config.keycap_primary.clone().unwrap_or_default());
+            Self::color_row(ui, &theme, "Secondary", &mut self.config.keycap_secondary.clone().unwrap_or_default());
 
             let mut use_gradient = self.config.use_gradient.unwrap_or(true);
-            ui.checkbox(&mut use_gradient, "Use Gradient");
+            Self::toggle_row(ui, &theme, "Gradient", &mut use_gradient);
             self.config.use_gradient = Some(use_gradient);
 
             ui.add_space(4.0);
 
             let mut highlight_mods = self.config.highlight_modifiers.unwrap_or(true);
-            ui.checkbox(&mut highlight_mods, "Highlight Modifiers");
+            Self::toggle_row(ui, &theme, "Highlight Modifiers", &mut highlight_mods);
             self.config.highlight_modifiers = Some(highlight_mods);
 
             if highlight_mods {
-                Self::color_edit(ui, "Modifier Primary:", &mut self.config.modifier_primary.clone().unwrap_or_default());
-                Self::color_edit(ui, "Modifier Secondary:", &mut self.config.modifier_secondary.clone().unwrap_or_default());
+                Self::color_row(ui, &theme, "Modifier Primary", &mut self.config.modifier_primary.clone().unwrap_or_default());
+                Self::color_row(ui, &theme, "Modifier Secondary", &mut self.config.modifier_secondary.clone().unwrap_or_default());
             }
         });
 
         ui.add_space(4.0);
 
         // ── Text ──
-        ui.collapsing("Text", |ui| {
-            ui.label("Font Size (leave empty for scale default):");
+        Self::card(ui, &theme, |ui| {
+            Self::section_header(ui, &theme, "Text");
+
             let mut text_size = self.config.text_size.unwrap_or(0.0);
-            ui.add(egui::Slider::new(&mut text_size, 0.0..=64.0).prefix("px "));
+            Self::labeled_slider(ui, &theme, "Font Size", &mut text_size, 0.0..=64.0, "px");
             self.config.text_size = if text_size <= 0.0 { None } else { Some(text_size) };
 
-            Self::color_edit(ui, "Text Color:", &mut self.config.text_color.clone().unwrap_or_default());
+            Self::color_row(ui, &theme, "Color", &mut self.config.text_color.clone().unwrap_or_default());
 
-            ui.label("Capitalization:");
-            egui::ComboBox::from_id_salt("text_caps")
-                .selected_text(TEXT_CAPS[self.text_caps_index])
-                .show_ui(ui, |ui| {
-                    for (i, &cap) in TEXT_CAPS.iter().enumerate() {
-                        ui.selectable_value(&mut self.text_caps_index, i, cap);
-                    }
-                });
+            Self::dropdown(
+                ui,
+                &theme,
+                "text_caps",
+                "Capitalization",
+                TEXT_CAPS,
+                &mut self.text_caps_index,
+            );
 
-            ui.label("Variant:");
-            egui::ComboBox::from_id_salt("text_variant")
-                .selected_text(TEXT_VARIANTS[self.text_variant_index])
-                .show_ui(ui, |ui| {
-                    for (i, &variant) in TEXT_VARIANTS.iter().enumerate() {
-                        ui.selectable_value(&mut self.text_variant_index, i, variant);
-                    }
-                });
+            Self::dropdown(
+                ui,
+                &theme,
+                "text_variant",
+                "Variant",
+                TEXT_VARIANTS,
+                &mut self.text_variant_index,
+            );
 
             let highlight_mods = self.config.highlight_modifiers.unwrap_or(true);
             if highlight_mods {
-                Self::color_edit(ui, "Modifier Text Color:", &mut self.config.text_modifier_color.clone().unwrap_or_default());
+                Self::color_row(ui, &theme, "Modifier Color", &mut self.config.text_modifier_color.clone().unwrap_or_default());
             }
         });
 
         ui.add_space(4.0);
 
         // ── Border ──
-        ui.collapsing("Border", |ui| {
+        Self::card(ui, &theme, |ui| {
+            Self::section_header(ui, &theme, "Border");
+
             let mut border_enabled = self.config.border_enabled.unwrap_or(true);
-            ui.checkbox(&mut border_enabled, "Enable Border");
+            Self::toggle_row(ui, &theme, "Enabled", &mut border_enabled);
             self.config.border_enabled = Some(border_enabled);
 
             if border_enabled {
-                Self::color_edit(ui, "Border Color:", &mut self.config.border_color.clone().unwrap_or_default());
+                Self::color_row(ui, &theme, "Color", &mut self.config.border_color.clone().unwrap_or_default());
 
                 let mut border_width = self.config.border_width.unwrap_or(1.0);
-                ui.label(format!("Width: {:.1}px", border_width));
-                ui.add(egui::Slider::new(&mut border_width, 0.5..=4.0).suffix("px"));
+                Self::labeled_slider(ui, &theme, "Width", &mut border_width, 0.5..=4.0, "px");
                 self.config.border_width = Some(border_width);
 
                 let mut border_radius = self.config.border_radius.unwrap_or(0.25);
-                ui.label(format!("Radius: {:.0}%", border_radius * 100.0));
-                ui.add(egui::Slider::new(&mut border_radius, 0.0..=1.0)
-                    .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)));
+                Self::labeled_slider(ui, &theme, "Radius", &mut border_radius, 0.0..=1.0, "%");
                 self.config.border_radius = Some(border_radius);
 
                 let highlight_mods = self.config.highlight_modifiers.unwrap_or(true);
                 if highlight_mods {
-                    Self::color_edit(ui, "Modifier Border Color:", &mut self.config.border_modifier_color.clone().unwrap_or_default());
+                    Self::color_row(ui, &theme, "Modifier Color", &mut self.config.border_modifier_color.clone().unwrap_or_default());
                 }
             }
         });
@@ -655,103 +965,106 @@ impl SettingsApp {
         ui.add_space(4.0);
 
         // ── Background ──
-        ui.collapsing("Background", |ui| {
+        Self::card(ui, &theme, |ui| {
+            Self::section_header(ui, &theme, "Background");
+
             let mut bg_enabled = self.config.background_enabled.unwrap_or(false);
-            ui.checkbox(&mut bg_enabled, "Enable Background Fill");
+            Self::toggle_row(ui, &theme, "Fill", &mut bg_enabled);
             self.config.background_enabled = Some(bg_enabled);
 
             if bg_enabled {
-                Self::color_edit(ui, "Background Color:", &mut self.config.background_color.clone().unwrap_or_default());
+                Self::color_row(ui, &theme, "Color", &mut self.config.background_color.clone().unwrap_or_default());
             }
         });
 
-        ui.add_space(16.0);
-        ui.separator();
-
-        ui.horizontal(|ui| {
-            if ui.button("Save").clicked() {
-                self.save();
-            }
-            if ui.button("Save & Close").clicked() {
-                self.sync_to_config();
-                if self.config.save().is_ok() {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                }
-            }
-        });
-
-        if !self.save_status.is_empty() {
-            ui.label(&self.save_status);
-        }
+        Self::save_bar(ui, &theme, ctx, self);
     }
 
     fn render_display_tab(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.heading("Display Settings");
-        ui.separator();
+        let theme = self.theme.clone();
 
-        ui.add_space(8.0);
+        ui.add_space(4.0);
+        Self::card(ui, &theme, |ui| {
+            let mut opacity = self.config.opacity.unwrap_or(0.9) as f64;
+            Self::labeled_slider_f64(ui, &theme, "Opacity", &mut opacity, 0.1..=1.0, "%");
+            self.config.opacity = Some(opacity as f32);
 
-        let mut opacity = self.config.opacity.unwrap_or(0.9) as f64;
-        ui.label(format!("Opacity: {:.0}%", opacity * 100.0));
-        ui.add(egui::Slider::from_get_set(0.1..=1.0, |v| {
-            if let Some(new_val) = v {
-                opacity = new_val;
-            }
-            opacity
-        })
-        .suffix("%")
-        .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)));
-        self.config.opacity = Some(opacity as f32);
+            ui.add_space(4.0);
 
-        ui.add_space(8.0);
-
-        let mut hist = self.config.history_length.unwrap_or(3) as f32;
-        ui.label(format!("History Length: {}", hist as usize));
-        ui.add(egui::Slider::new(&mut hist, 1.0..=10.0).step_by(1.0));
-        self.config.history_length = Some(hist as usize);
-
-        ui.add_space(16.0);
-        ui.separator();
-
-        ui.horizontal(|ui| {
-            if ui.button("Save").clicked() {
-                self.save();
-            }
-            if ui.button("Save & Close").clicked() {
-                self.sync_to_config();
-                if self.config.save().is_ok() {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                }
-            }
+            let mut hist = self.config.history_length.unwrap_or(3) as f32;
+            Self::labeled_slider(ui, &theme, "History Length", &mut hist, 1.0..=10.0, "");
+            self.config.history_length = Some(hist as usize);
         });
+
+        Self::save_bar(ui, &theme, ctx, self);
     }
 
     fn render_about_tab(&mut self, ui: &mut egui::Ui) {
-        ui.heading("About EchoInput");
-        ui.separator();
+        let theme = self.theme.clone();
 
-        ui.add_space(8.0);
-        ui.label("Version: 0.1.0");
-        ui.label("A privacy-first keyboard visualization overlay for Wayland.");
-        ui.add_space(8.0);
+        ui.add_space(12.0);
 
-        ui.label("Config file location:");
-        if let Some(path) = FileConfig::config_path() {
-            ui.monospace(path.display().to_string());
-        } else {
-            ui.label("Could not determine config path");
-        }
+        ui.centered_and_justified(|ui| {
+            ui.vertical_centered(|ui| {
+                ui.label(
+                    egui::RichText::new("EchoInput")
+                        .size(24.0)
+                        .color(theme.accent)
+                        .strong(),
+                );
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new("v0.1.0")
+                        .size(13.0)
+                        .color(theme.text_muted),
+                );
+                ui.add_space(12.0);
+                ui.label(
+                    egui::RichText::new("A privacy-first keyboard visualization overlay")
+                        .size(13.0)
+                        .color(theme.text_dim),
+                );
+                ui.add_space(24.0);
 
-        ui.add_space(16.0);
+                Self::card(ui, &theme, |ui| {
+                    ui.label(
+                        egui::RichText::new("Config file")
+                            .size(12.0)
+                            .color(theme.text_muted),
+                    );
+                    ui.add_space(2.0);
+                    if let Some(path) = FileConfig::config_path() {
+                        ui.label(
+                            egui::RichText::new(path.display().to_string())
+                                .size(12.0)
+                                .color(theme.text)
+                                .monospace(),
+                        );
+                    }
+                });
 
-        if ui.button("Open Config Directory").clicked() {
-            if let Some(path) = FileConfig::config_path() {
-                if let Some(parent) = path.parent() {
-                    let _ = std::process::Command::new("xdg-open")
-                        .arg(parent)
-                        .spawn();
+                ui.add_space(12.0);
+
+                if ui.add(
+                    egui::Button::new(
+                        egui::RichText::new("Open Config Directory").size(13.0),
+                    )
+                    .fill(theme.bg_hover)
+                    .corner_radius(egui::CornerRadius::same(6)),
+                ).clicked() {
+                    if let Some(path) = FileConfig::config_path() {
+                        if let Some(parent) = path.parent() {
+                            // Cross-platform directory open
+                            #[cfg(target_os = "linux")]
+                            { let _ = std::process::Command::new("xdg-open").arg(parent).spawn(); }
+                            #[cfg(target_os = "macos")]
+                            { let _ = std::process::Command::new("open").arg(parent).spawn(); }
+                            #[cfg(target_os = "windows")]
+                            { let _ = std::process::Command::new("explorer").arg(parent).spawn(); }
+                        }
+                    }
                 }
-            }
-        }
+            });
+        });
     }
 }
