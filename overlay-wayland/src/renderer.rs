@@ -1243,9 +1243,12 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], config: &OverlayCon
                     if is_seq {
                         x += KEYCAP_GAP;
                     } else {
+                        let sep_w = measure_text_width("+", font_size);
+                        let total_gap = sep_w + KEYCAP_GAP * 2.0;
+                        let sep_center_x = x + total_gap / 2.0;
                         if let Ok(sep_ext) = cr.text_extents("+") {
                             let sep_visual_w = sep_ext.x_bearing() + sep_ext.width();
-                            let sep_x = x + KEYCAP_GAP - sep_visual_w / 2.0;
+                            let sep_x = sep_center_x - sep_visual_w / 2.0;
                             let sep_y = y + (keycap_h - sep_ext.height()) / 2.0
                                 - sep_ext.y_bearing();
                             let _ = cr.set_source_rgba(
@@ -1255,7 +1258,7 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], config: &OverlayCon
                             cr.move_to(sep_x, sep_y);
                             let _ = cr.show_text("+");
                         }
-                        x += measure_text_width("+", font_size) + KEYCAP_GAP;
+                        x += total_gap;
                     }
                 }
             }
