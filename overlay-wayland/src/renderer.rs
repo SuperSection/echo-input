@@ -886,7 +886,7 @@ fn shorten_label(label: &str) -> String {
         "Insert" => "Ins".to_string(),
         "PageUp" => "PgUp".to_string(),
         "PageDown" => "PgDn".to_string(),
-        "Backspace" => "Bksp".to_string(),
+
         "CapsLock" => "Caps".to_string(),
         "NumLock" => "Num".to_string(),
         "ScrollLock" => "Scrl".to_string(),

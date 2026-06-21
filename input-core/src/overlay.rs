@@ -160,8 +160,8 @@ impl Default for TextSettings {
             size: None,
             color: "#f5f5f5".into(),
             modifier_color: "#b3d4fc".into(),
-            caps: TextCaps::Uppercase,
-            variant: TextVariant::Full,
+            caps: TextCaps::Capitalize,
+            variant: TextVariant::Short,
         }
     }
 }
