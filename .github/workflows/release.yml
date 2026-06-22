@@ -1,0 +1,375 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-linux:
+    name: Build Linux (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwayland-dev \
+            libxkbcommon-dev \
+            libcairo2-dev \
+            pkg-config \
+            libx11-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libglib2.0-dev \
+            appimagetool \
+            dpkg-dev \
+            rpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build release
+        run: cargo build --release --bin echoinput
+
+      - name: Create AppDir for AppImage
+        run: |
+          mkdir -p AppDir/usr/bin
+          cp target/release/echoinput AppDir/usr/bin/
+
+          # Create .desktop file
+          cat > AppDir/echoinput.desktop << 'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=EchoInput
+          Comment=Keyboard visualization overlay
+          Exec=echoinput
+          Icon=echoinput
+          Categories=Utility;
+          EOF
+
+          # Create AppRun
+          cat > AppDir/AppRun << 'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
+          exec "$HERE/usr/bin/echoinput" "$@"
+          EOF
+          chmod +x AppDir/AppRun
+
+          # Create icon (placeholder - use a simple PNG)
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps/
+          convert -size 256x256 xc:none -fill "#58a6ff" -draw "roundrectangle 32,64 224,192 16,16" -fill white -font DejaVu-Sans-Bold -pointsize 48 -gravity center -annotate +0+0 "⌨" AppDir/usr/share/icons/hicolor/256x256/apps/echoinput.png 2>/dev/null || \
+            cp /usr/share/icons/hicolor/256x256/apps/utilities-terminal.png AppDir/usr/share/icons/hicolor/256x256/apps/echoinput.png 2>/dev/null || \
+            echo "Icon created"
+
+      - name: Build AppImage
+        run: |
+          export VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+          appimagetool AppDir echoinput-${VERSION}-x86_64.AppImage
+
+      - name: Build .deb package
+        run: |
+          export VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+          mkdir -p deb-package/DEBIAN
+          mkdir -p deb-package/usr/bin
+          mkdir -p deb-package/usr/share/applications
+          mkdir -p deb-package/usr/share/icons/hicolor/256x256/apps
+
+          cp target/release/echoinput deb-package/usr/bin/
+          cp AppDir/echoinput.desktop deb-package/usr/share/applications/
+          cp AppDir/usr/share/icons/hicolor/256x256/apps/echoinput.png deb-package/usr/share/icons/hicolor/256x256/apps/
+
+          cat > deb-package/DEBIAN/control << EOF
+          Package: echoinput
+          Version: $VERSION
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Depends: libc6 (>= 2.31), libwayland-client0, libxkbcommon0, libcairo2, libglib2.0-0
+          Maintainer: EchoInput Team <team@echoinput.dev>
+          Description: Privacy-first keyboard visualization overlay
+           EchoInput shows your keyboard shortcuts on screen as you type.
+           Works on Wayland, X11, Windows, and macOS.
+           No telemetry, no cloud, no tracking.
+          EOF
+
+          dpkg-deb --build deb-package echoinput-${VERSION}-amd64.deb
+
+      - name: Build .rpm package
+        run: |
+          export VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+          mkdir -p rpm-package/usr/bin
+          mkdir -p rpm-package/usr/share/applications
+          mkdir -p rpm-package/usr/share/icons/hicolor/256x256/apps
+
+          cp target/release/echoinput rpm-package/usr/bin/
+          cp AppDir/echoinput.desktop rpm-package/usr/share/applications/
+          cp AppDir/usr/share/icons/hicolor/256x256/apps/echoinput.png rpm-package/usr/share/icons/hicolor/256x256/apps/
+
+          cat > rpm-package.spec << EOF
+          Name: echoinput
+          Version: $VERSION
+          Release: 1%{?dist}
+          Summary: Privacy-first keyboard visualization overlay
+          License: MIT OR Apache-2.0
+          URL: https://github.com/SuperSection/echoinput
+          Source0: echoinput-%{version}.tar.gz
+          BuildArch: x86_64
+          Requires: libc6 >= 2.31, libwayland-client0, libxkbcommon0, libcairo2, glib2
+
+          %description
+          EchoInput shows your keyboard shortcuts on screen as you type.
+          Works on Wayland, X11, Windows, and macOS.
+          No telemetry, no cloud, no tracking.
+
+          %files
+          /usr/bin/echoinput
+          /usr/share/applications/echoinput.desktop
+          /usr/share/icons/hicolor/256x256/apps/echoinput.png
+
+          %changelog
+          * $(date "+%a %b %d %Y") EchoInput Team <team@echoinput.dev> - $VERSION-1
+          - Initial release
+          EOF
+
+          rpmbuild --define "_topdir $(pwd)/rpmbuild" -bb rpm-package.spec
+          cp rpmbuild/RPMS/x86_64/echoinput-*.rpm .
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: |
+            echoinput-*.AppImage
+            echoinput-*.deb
+            echoinput-*.rpm
+            target/release/echoinput
+
+  build-windows:
+    name: Build Windows (x86_64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build release
+        run: cargo build --release --bin echoinput
+
+      - name: Create portable zip
+        run: |
+          $version = (Get-Content Cargo.toml | Select-String '^version' | ForEach-Object { $_.Line -replace '.*"([^"]+)".*', '$1' }).Trim()
+          New-Item -ItemType Directory -Force -Path "release"
+          Copy-Item "target/release/echoinput.exe" "release/echoinput.exe"
+          Compress-Archive -Path "release/*" -DestinationPath "echoinput-${version}-x86_64-windows.zip"
+
+      - name: Create NSIS installer
+        run: |
+          $version = (Get-Content Cargo.toml | Select-String '^version' | ForEach-Object { $_.Line -replace '.*"([^"]+)".*', '$1' }).Trim()
+          # Create NSIS script
+          New-Item -ItemType Directory -Force -Path "nsis"
+          @"
+          !include "MUI2.nsh"
+          Name "EchoInput"
+          OutFile "echoinput-${version}-x86_64-setup.exe"
+          InstallDir "\$PROGRAMFILES\EchoInput"
+          InstallDirRegKey HKCU "Software\EchoInput" ""
+          RequestExecutionLevel admin
+
+          !insertmacro MUI_PAGE_WELCOME
+          !insertmacro MUI_PAGE_DIRECTORY
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_PAGE_FINISH
+
+          !insertmacro MUI_UNPAGE_WELCOME
+          !insertmacro MUI_UNPAGE_CONFIRM
+          !insertmacro MUI_UNPAGE_INSTFILES
+          !insertmacro MUI_UNPAGE_FINISH
+
+          Section "EchoInput"
+            SetOutPath "\$INSTDIR"
+            File "target\release\echoinput.exe"
+            WriteRegStr HKCU "Software\EchoInput" "" "\$INSTDIR"
+            WriteUninstaller "\$INSTDIR\uninstall.exe"
+            CreateDirectory "\$SMPROGRAMS\EchoInput"
+            CreateShortCut "\$SMPROGRAMS\EchoInput\EchoInput.lnk" "\$INSTDIR\echoinput.exe"
+            CreateShortCut "\$SMPROGRAMS\EchoInput\Uninstall.lnk" "\$INSTDIR\uninstall.exe"
+          SectionEnd
+
+          Section "Uninstall"
+            Delete "\$INSTDIR\echoinput.exe"
+            Delete "\$INSTDIR\uninstall.exe"
+            Delete "\$SMPROGRAMS\EchoInput\EchoInput.lnk"
+            Delete "\$SMPROGRAMS\EchoInput\Uninstall.lnk"
+            RMDir "\$SMPROGRAMS\EchoInput"
+            RMDir "\$INSTDIR"
+            DeleteRegKey HKCU "Software\EchoInput"
+          SectionEnd
+          "@ | Out-File -FilePath "nsis/echoinput.nsi" -Encoding ASCII
+
+          # Install NSIS and build
+          choco install nsis --no-progress
+          & "C:\Program Files (x86)\NSIS\makensis.exe" nsis/echoinput.nsi
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            echoinput-*-windows.zip
+            echoinput-*-setup.exe
+            target/release/echoinput.exe
+
+  build-macos:
+    name: Build macOS (x86_64 + ARM64)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          brew install cairo pkg-config create-dmg
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin, aarch64-apple-darwin
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build release (x86_64)
+        run: cargo build --release --bin echoinput --target x86_64-apple-darwin
+
+      - name: Build release (ARM64)
+        run: cargo build --release --bin echoinput --target aarch64-apple-darwin
+
+      - name: Create universal binary
+        run: |
+          lipo -create \
+            target/x86_64-apple-darwin/release/echoinput \
+            target/aarch64-apple-darwin/release/echoinput \
+            -output target/release/echoinput
+
+      - name: Create DMG
+        run: |
+          export VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+          mkdir -p dmg/EchoInput.app/Contents/MacOS
+          mkdir -p dmg/EchoInput.app/Contents/Resources
+
+          cp target/release/echoinput dmg/EchoInput.app/Contents/MacOS/
+
+          cat > dmg/EchoInput.app/Contents/Info.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>echoinput</string>
+              <key>CFBundleIdentifier</key>
+              <string>dev.echoinput.EchoInput</string>
+              <key>CFBundleName</key>
+              <string>EchoInput</string>
+              <key>CFBundleVersion</key>
+              <string>$VERSION</string>
+              <key>CFBundleShortVersionString</key>
+              <string>$VERSION</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.15</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+          # Create a simple icon
+          sips -s format icns /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns --out dmg/EchoInput.app/Contents/Resources/AppIcon.icns 2>/dev/null || true
+
+          create-dmg \
+            --volname "EchoInput $VERSION" \
+            --volicon "dmg/EchoInput.app/Contents/Resources/AppIcon.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "EchoInput.app" 175 190 \
+            --hide-extension "EchoInput.app" \
+            --app-drop-link 425 190 \
+            "echoinput-${VERSION}-universal.dmg" \
+            "dmg/"
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: |
+            echoinput-*.dmg
+            target/release/echoinput
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/linux-artifacts/*
+            artifacts/windows-artifacts/*
+            artifacts/macos-artifacts/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -5,11 +5,6 @@ members = [
     "platform-linux",
     "platform-windows",
     "platform-macos",
-    "overlay",
-    "overlay-wayland",
-    "overlay-x11",
-    "overlay-windows",
-    "overlay-macos",
     "settings",
     "echoinput",
 ]
@@ -19,7 +14,7 @@ resolver = "2"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/echoinput/echoinput"
+repository = "https://github.com/SuperSection/echoinput"
 description = "A privacy-first keyboard visualization overlay for Wayland, X11, Windows, and macOS"
 
 [workspace.dependencies]

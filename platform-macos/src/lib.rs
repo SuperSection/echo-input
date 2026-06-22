@@ -1,9 +1,12 @@
 pub mod keymap;
+pub mod overlay;
 
 use anyhow::Result;
 use input_core::events::InputEvent;
 use input_core::keys::VirtualKey;
+use input_core::ipc::MessageBus;
 use platform::capture::{CaptureFeatures, KeyboardCaptureProvider, KeyboardCaptureFactory};
+use platform::overlay::OverlayRendererFactory;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -273,19 +276,19 @@ impl KeyboardCaptureFactory for MacosCaptureFactory {
 
 /// Factory for creating macOS overlay renderer.
 pub struct MacRendererFactory {
-    inner: overlay_macos::MacRendererFactory,
+    inner: overlay::MacRendererFactory,
 }
 
 impl MacRendererFactory {
-    pub fn new() -> Self { Self { inner: overlay_macos::MacRendererFactory::new() } }
+    pub fn new() -> Self { Self { inner: overlay::MacRendererFactory::new() } }
 }
 
 impl Default for MacRendererFactory {
     fn default() -> Self { Self::new() }
 }
 
-impl platform::overlay::OverlayRendererFactory for MacRendererFactory {
-    fn create(&self, bus: input_core::ipc::MessageBus) -> Box<dyn platform::overlay::OverlayRenderer> {
+impl OverlayRendererFactory for MacRendererFactory {
+    fn create(&self, bus: MessageBus) -> Box<dyn platform::overlay::OverlayRenderer> {
         self.inner.create(bus)
     }
 

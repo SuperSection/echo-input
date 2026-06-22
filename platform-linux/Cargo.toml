@@ -8,19 +8,27 @@ license.workspace = true
 [dependencies]
 input-core = { path = "../input-core" }
 platform = { path = "../platform" }
-overlay-wayland = { path = "../overlay-wayland" }
-overlay-x11 = { path = "../overlay-x11" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
+thiserror = { workspace = true }
 async-trait = "0.1"
 libc = "0.2"
+cairo-rs = { version = "0.20", default-features = false }
 
 # evdev for keyboard/mouse capture
 evdev = { version = "0.13", features = ["tokio"] }
 
 # XKB for keymap translation
 xkbcommon = { version = "0.8", features = ["wayland"] }
+
+# Wayland dependencies
+wayland-client = { version = "0.31", default-features = false, features = ["libwayland_1_23"] }
+wayland-protocols = { version = "0.32", features = ["client"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+
+# X11 dependencies
+x11rb = { version = "0.13", features = ["allow-unsafe-code"] }
 
 # Async I/O
 mio = { version = "1", features = ["os-ext"] }

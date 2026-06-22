@@ -7,7 +7,8 @@
 //! Press Ctrl+C to exit.
 
 use input_core::processor::DefaultEventProcessor;
-use input_core::traits::{EventProcessor, KeyboardCaptureProvider, ProcessorConfig};
+use input_core::traits::{EventProcessor, ProcessorConfig};
+use platform::capture::KeyboardCaptureProvider;
 use std::io::Write;
 use std::time::{Duration, Instant};
 

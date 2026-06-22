@@ -1,11 +1,11 @@
 pub mod evdev_capture;
 pub mod keymap;
+pub mod overlay_wayland;
+pub mod overlay_x11;
 
 use input_core::ipc::MessageBus;
 use platform::capture::KeyboardCaptureFactory;
 use platform::overlay::OverlayRendererFactory;
-use overlay_wayland::WaylandRendererFactory;
-use overlay_x11::X11RendererFactory;
 
 /// Factory for creating Linux keyboard capture providers.
 pub struct EvdevCaptureFactory;
@@ -30,11 +30,11 @@ impl KeyboardCaptureFactory for EvdevCaptureFactory {
 
 /// Factory for creating Wayland overlay renderer on Linux.
 pub struct LinuxWaylandRendererFactory {
-    inner: WaylandRendererFactory,
+    inner: overlay_wayland::WaylandRendererFactory,
 }
 
 impl LinuxWaylandRendererFactory {
-    pub fn new() -> Self { Self { inner: WaylandRendererFactory::new() } }
+    pub fn new() -> Self { Self { inner: overlay_wayland::WaylandRendererFactory::new() } }
 }
 
 impl Default for LinuxWaylandRendererFactory {
@@ -53,11 +53,11 @@ impl OverlayRendererFactory for LinuxWaylandRendererFactory {
 
 /// Factory for creating X11 overlay renderer on Linux.
 pub struct LinuxX11RendererFactory {
-    inner: X11RendererFactory,
+    inner: overlay_x11::X11RendererFactory,
 }
 
 impl LinuxX11RendererFactory {
-    pub fn new() -> Self { Self { inner: X11RendererFactory::new() } }
+    pub fn new() -> Self { Self { inner: overlay_x11::X11RendererFactory::new() } }
 }
 
 impl Default for LinuxX11RendererFactory {

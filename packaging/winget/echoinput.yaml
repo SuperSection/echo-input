@@ -1,0 +1,35 @@
+# WinGet manifest for EchoInput
+# Update version and hashes when releasing
+PackageIdentifier: EchoInput.EchoInput
+PackageVersion: 0.1.0
+PackageName: EchoInput
+Publisher: EchoInput Team
+License: MIT OR Apache-2.0
+LicenseUrl: https://github.com/SuperSection/echoinput/blob/main/LICENSE
+ShortDescription: Privacy-first keyboard visualization overlay
+Description: EchoInput shows your keyboard shortcuts on screen as you type. Works on Windows, Linux, and macOS. No telemetry, no cloud, no tracking.
+Tags:
+- keyboard
+- overlay
+- visualization
+- shortcuts
+- productivity
+Installers:
+- Architecture: x64
+  InstallerType: zip
+  InstallerUrl: https://github.com/SuperSection/echoinput/releases/download/v0.1.0/echoinput-0.1.0-x86_64-windows.zip
+  InstallerSha256: REPLACE_WITH_ACTUAL_SHA256
+  NestedInstallerType: portable
+  NestedInstallerFiles:
+  - RelativeFilePath: echoinput.exe
+    PortableCommandAlias: echoinput
+- Architecture: x64
+  InstallerType: exe
+  InstallerUrl: https://github.com/SuperSection/echoinput/releases/download/v0.1.0/echoinput-0.1.0-x86_64-setup.exe
+  InstallerSha256: REPLACE_WITH_ACTUAL_SHA256
+  InstallerSwitches:
+    Silent: /S
+    SilentWithProgress: /S
+    Custom: /D=C:\Program Files\EchoInput
+ManifestType: installer
+ManifestVersion: 1.5.0

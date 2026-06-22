@@ -1,5 +1,5 @@
-use crate::animation::Animation;
-use crate::error::WaylandError;
+use crate::overlay_wayland::animation::Animation;
+use crate::overlay_wayland::error::WaylandError;
 use input_core::events::ShortcutCombo;
 use input_core::ipc::MessageBus;
 use input_core::overlay::{
@@ -589,7 +589,7 @@ fn run_wayland_event_loop(
 
             // When animation finishes fading to Idle, clear the combo list
             // so the next keypress starts fresh — no stale rows reappear.
-            if needs_redraw && animation.state() == crate::animation::AnimationState::Idle {
+            if needs_redraw && animation.state() == crate::overlay_wayland::animation::AnimationState::Idle {
                 current_combos.clear();
             }
 

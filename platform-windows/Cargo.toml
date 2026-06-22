@@ -8,7 +8,6 @@ license.workspace = true
 [dependencies]
 input-core = { path = "../input-core" }
 platform = { path = "../platform" }
-overlay-windows = { path = "../overlay-windows" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
@@ -19,5 +18,7 @@ crossbeam-channel = "0.5"
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Dwm",
     "Win32_System_LibraryLoader",
 ] }

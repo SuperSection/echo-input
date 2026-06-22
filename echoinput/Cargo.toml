@@ -11,8 +11,8 @@ path = "src/main.rs"
 
 [dependencies]
 input-core = { path = "../input-core" }
+overlay = { path = "../overlay" }
 platform = { path = "../platform" }
-settings = { path = "../settings" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

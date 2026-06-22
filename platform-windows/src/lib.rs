@@ -1,9 +1,12 @@
 pub mod keymap;
+pub mod overlay;
 
 use anyhow::Result;
 use input_core::events::InputEvent;
 use input_core::keys::VirtualKey;
+use input_core::ipc::MessageBus;
 use platform::capture::{CaptureFeatures, KeyboardCaptureProvider, KeyboardCaptureFactory};
+use platform::overlay::OverlayRendererFactory;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -247,19 +250,19 @@ impl KeyboardCaptureFactory for WindowsCaptureFactory {
 
 /// Factory for creating Windows overlay renderer.
 pub struct WindowsRendererFactory {
-    inner: overlay_windows::WindowsRendererFactory,
+    inner: overlay::WindowsRendererFactory,
 }
 
 impl WindowsRendererFactory {
-    pub fn new() -> Self { Self { inner: overlay_windows::WindowsRendererFactory::new() } }
+    pub fn new() -> Self { Self { inner: overlay::WindowsRendererFactory::new() } }
 }
 
 impl Default for WindowsRendererFactory {
     fn default() -> Self { Self::new() }
 }
 
-impl platform::overlay::OverlayRendererFactory for WindowsRendererFactory {
-    fn create(&self, bus: input_core::ipc::MessageBus) -> Box<dyn platform::overlay::OverlayRenderer> {
+impl OverlayRendererFactory for WindowsRendererFactory {
+    fn create(&self, bus: MessageBus) -> Box<dyn platform::overlay::OverlayRenderer> {
         self.inner.create(bus)
     }
 
