@@ -1,3 +1,5 @@
+#![cfg(target_os = "linux")]
+
 pub mod evdev_capture;
 pub mod keymap;
 pub mod overlay_wayland;

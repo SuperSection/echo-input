@@ -449,7 +449,6 @@ mod tests {
             group_shortcuts: true,
             history_length: 3,
             dedup_window: Duration::from_millis(0),
-            ..Default::default()
         });
 
         proc.process(key_press(VirtualKey::ControlLeft));

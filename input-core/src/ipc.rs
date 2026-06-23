@@ -446,9 +446,7 @@ mod tests {
         bus.publish_command(OverlayCommand::Stop);
         bus.publish_command(OverlayCommand::Restart);
         bus.publish_command(OverlayCommand::Clear);
-        bus.publish_command(OverlayCommand::UpdateConfig(Box::new(
-            OverlayConfig::default(),
-        )));
+        bus.publish_command(OverlayCommand::UpdateConfig(Box::default()));
     }
 
     #[test]

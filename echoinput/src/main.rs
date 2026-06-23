@@ -779,8 +779,8 @@ impl eframe::App for SettingsApp {
                     Self::section_header(ui, &theme, "Positioning");
                     Self::card(ui, &theme, |ui| {
                         Self::dropdown(ui, &theme, "pos2", "Position", POSITIONS, &mut self.position_index);
-                        Self::labeled_slider(ui, &theme, "Margin X", &mut self.config.margin_x.as_mut().unwrap(), 0.0..=100.0, "px");
-                        Self::labeled_slider(ui, &theme, "Margin Y", &mut self.config.margin_y.as_mut().unwrap(), 0.0..=100.0, "px");
+                        Self::labeled_slider(ui, &theme, "Margin X", self.config.margin_x.as_mut().unwrap(), 0.0..=100.0, "px");
+                        Self::labeled_slider(ui, &theme, "Margin Y", self.config.margin_y.as_mut().unwrap(), 0.0..=100.0, "px");
                     });
                 }
                 SettingsTab::Keycap => {
@@ -789,20 +789,20 @@ impl eframe::App for SettingsApp {
                         Self::dropdown(ui, &theme, "kcs", "Style", KEYCAP_STYLES, &mut self.keycap_style_index);
                         Self::dropdown(ui, &theme, "tc", "Text Case", TEXT_CAPS, &mut self.text_caps_index);
                         Self::dropdown(ui, &theme, "tv", "Text Variant", TEXT_VARIANTS, &mut self.text_variant_index);
-                        Self::color_row(ui, &theme, "Keycap Primary", &mut self.config.keycap_primary.as_mut().unwrap());
-                        Self::color_row(ui, &theme, "Keycap Secondary", &mut self.config.keycap_secondary.as_mut().unwrap());
-                        Self::color_row(ui, &theme, "Text Color", &mut self.config.text_color.as_mut().unwrap());
-                        Self::toggle_row(ui, &theme, "Use Gradient", &mut self.config.use_gradient.as_mut().unwrap());
-                        Self::toggle_row(ui, &theme, "Highlight Modifiers", &mut self.config.highlight_modifiers.as_mut().unwrap());
-                        Self::toggle_row(ui, &theme, "Show Border", &mut self.config.border_enabled.as_mut().unwrap());
+                        Self::color_row(ui, &theme, "Keycap Primary", self.config.keycap_primary.as_mut().unwrap());
+                        Self::color_row(ui, &theme, "Keycap Secondary", self.config.keycap_secondary.as_mut().unwrap());
+                        Self::color_row(ui, &theme, "Text Color", self.config.text_color.as_mut().unwrap());
+                        Self::toggle_row(ui, &theme, "Use Gradient", self.config.use_gradient.as_mut().unwrap());
+                        Self::toggle_row(ui, &theme, "Highlight Modifiers", self.config.highlight_modifiers.as_mut().unwrap());
+                        Self::toggle_row(ui, &theme, "Show Border", self.config.border_enabled.as_mut().unwrap());
                     });
                 }
                 SettingsTab::Display => {
                     Self::section_header(ui, &theme, "Animation");
                     Self::card(ui, &theme, |ui| {
                         Self::dropdown(ui, &theme, "anim", "Animation", ANIMATION_TYPES, &mut self.animation_type_index);
-                        Self::labeled_slider(ui, &theme, "Animation Speed", &mut self.config.animation_speed.as_mut().unwrap(), 0.05..=1.0, "");
-                        Self::labeled_slider(ui, &theme, "Opacity", &mut self.config.opacity.as_mut().unwrap(), 0.1..=1.0, "");
+                        Self::labeled_slider(ui, &theme, "Animation Speed", self.config.animation_speed.as_mut().unwrap(), 0.05..=1.0, "");
+                        Self::labeled_slider(ui, &theme, "Opacity", self.config.opacity.as_mut().unwrap(), 0.1..=1.0, "");
                     });
                 }
                 SettingsTab::About => {

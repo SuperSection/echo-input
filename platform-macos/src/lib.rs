@@ -163,7 +163,7 @@ fn run_macos_event_tap(
         .create_runloop_source(0)
         .map_err(|_| anyhow::anyhow!("Failed to create run loop source"))?;
     let run_loop = CFRunLoop::get_current();
-    run_loop.add_source(&source, kCFRunLoopDefaultMode);
+    run_loop.add_source(&source, unsafe { kCFRunLoopDefaultMode });
 
     tap.enable();
     running.store(true, Ordering::Relaxed);
@@ -175,7 +175,11 @@ fn run_macos_event_tap(
             break;
         }
 
-        CFRunLoop::run_in_mode(kCFRunLoopDefaultMode, Duration::from_millis(10), true);
+        CFRunLoop::run_in_mode(
+            unsafe { kCFRunLoopDefaultMode },
+            Duration::from_millis(10),
+            true,
+        );
 
         while let Ok((keycode, key_down)) = event_rx.try_recv() {
             let key = keycode_to_key(keycode);
@@ -196,7 +200,7 @@ fn run_macos_event_tap(
         }
     }
 
-    run_loop.remove_source(&source, kCFRunLoopDefaultMode);
+    run_loop.remove_source(&source, unsafe { kCFRunLoopDefaultMode });
 
     running.store(false, Ordering::Relaxed);
     Ok(())
