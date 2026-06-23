@@ -12,7 +12,7 @@ pub fn render_general_tab(
 ) {
     ui.add_space(4.0);
     card(ui, theme, |ui| {
-        dropdown(ui, theme, "theme", "Theme", &THEMES, &mut app.theme_index);
+        dropdown(ui, theme, "theme", "Theme", THEMES, &mut app.theme_index);
         ui.add_space(4.0);
 
         ui.label(RichText::new("Monitor").color(theme.text_dim).size(13.0));

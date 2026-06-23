@@ -156,7 +156,7 @@ fn run_x11_event_loop(
     use x11rb::rust_connection::RustConnection;
 
     let (conn, screen_num) = RustConnection::connect(None)?;
-    let screen = &conn.setup().roots[screen_num as usize];
+    let screen = &conn.setup().roots[screen_num];
     let root = screen.root;
 
     let window = conn.generate_id()?;
@@ -222,12 +222,9 @@ fn run_x11_event_loop(
 
         // Handle X events
         while let Some(event) = conn.poll_for_event()? {
-            match event {
-                x11rb::protocol::Event::ConfigureNotify(e) => {
-                    screen_width = e.width as i32;
-                    screen_height = e.height as i32;
-                }
-                _ => {}
+            if let x11rb::protocol::Event::ConfigureNotify(e) = event {
+                screen_width = e.width as i32;
+                screen_height = e.height as i32;
             }
         }
 
@@ -402,11 +399,11 @@ fn render_x11(
         let cr = cairo::Context::new(&surface)?;
 
         // Clear
-        let _ = cr.set_operator(cairo::Operator::Clear);
-        let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
+        cr.set_operator(cairo::Operator::Clear);
+        cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
         let _ = cr.paint();
 
-        let _ = cr.set_operator(cairo::Operator::Over);
+        cr.set_operator(cairo::Operator::Over);
 
         cr.select_font_face(
             "sans-serif",
@@ -496,7 +493,7 @@ fn render_x11(
                         keycap_h,
                         corner_radius,
                     );
-                    let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 0.4 * row_opacity as f64);
+                    cr.set_source_rgba(0.0, 0.0, 0.0, 0.4 * row_opacity as f64);
                     let _ = cr.fill();
                 }
 
@@ -506,12 +503,12 @@ fn render_x11(
 
                 match config.keycap_style {
                     KeycapStyle::Minimal => {
-                        let _ = cr.set_source_rgba(bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
+                        cr.set_source_rgba(bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
                         let _ = cr.fill();
                     }
                     KeycapStyle::LowProfile => {
                         let darken_factor = 0.2;
-                        let _ = cr.set_source_rgba(
+                        cr.set_source_rgba(
                             bg_r * (1.0 - darken_factor),
                             bg_g * (1.0 - darken_factor),
                             bg_b * (1.0 - darken_factor),
@@ -539,7 +536,7 @@ fn render_x11(
                             );
                             let _ = cr.set_source(&pattern);
                         } else {
-                            let _ = cr.set_source_rgba(bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
+                            cr.set_source_rgba(bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
                         }
                         let _ = cr.fill_preserve();
                     }
@@ -547,7 +544,7 @@ fn render_x11(
 
                 // Border
                 if config.keycap_style != KeycapStyle::Minimal && config.border.enabled {
-                    let _ = cr.set_source_rgba(brd_r, brd_g, brd_b, row_opacity as f64 * 0.6);
+                    cr.set_source_rgba(brd_r, brd_g, brd_b, row_opacity as f64 * 0.6);
                     cr.set_line_width(config.border.width as f64);
                     let _ = cr.stroke();
                 }
@@ -581,12 +578,12 @@ fn render_x11(
 
                     // Text shadow
                     if config.keycap_style != KeycapStyle::Minimal {
-                        let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 0.5 * row_opacity as f64);
+                        cr.set_source_rgba(0.0, 0.0, 0.0, 0.5 * row_opacity as f64);
                         cr.move_to(text_x + 1.0, text_y + 1.0);
                         let _ = cr.show_text(&display_label);
                     }
 
-                    let _ = cr.set_source_rgba(txt_r, txt_g, txt_b, row_opacity as f64);
+                    cr.set_source_rgba(txt_r, txt_g, txt_b, row_opacity as f64);
                     cr.move_to(text_x, text_y);
                     let _ = cr.show_text(&display_label);
                 }
@@ -606,7 +603,7 @@ fn render_x11(
                             let sep_x = sep_center_x - sep_visual_w / 2.0;
                             let sep_y = y_offset + (keycap_h - sep_ext.height()) / 2.0
                                 - sep_ext.y_bearing();
-                            let _ = cr.set_source_rgba(0.55, 0.55, 0.6, row_opacity as f64 * 0.8);
+                            cr.set_source_rgba(0.55, 0.55, 0.6, row_opacity as f64 * 0.8);
                             cr.move_to(sep_x, sep_y);
                             let _ = cr.show_text("+");
                         }

@@ -5,7 +5,7 @@ use platform::overlay::{OverlayRenderer, OverlayRendererFactory};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{info, warn};
+use tracing::{error, info};
 
 #[allow(dead_code)]
 enum RendererCommand {
@@ -63,7 +63,7 @@ impl OverlayRenderer for MacRenderer {
             }
             #[cfg(not(target_os = "macos"))]
             {
-                warn!("macOS overlay not available on this platform");
+                tracing::warn!("macOS overlay not available on this platform");
                 let _ = (bus, config, cmd_rx, shutdown);
             }
         });
@@ -152,6 +152,8 @@ fn run_macos_overlay(
     use objc::runtime::{Class, Object};
     use objc::sel;
     use objc::sel_impl;
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
 
     unsafe {
         // Get NSApplication and screen info
@@ -302,6 +304,8 @@ unsafe fn render_macos_view(
 ) {
     use objc::msg_send;
     use objc::runtime::{Class, Object};
+    use objc::sel;
+    use objc::sel_impl;
 
     // Render to Cairo ImageSurface
     let surf_w = screen_w as i32;
@@ -777,6 +781,8 @@ impl NSString {
     unsafe fn get(s: &str) -> *mut objc::runtime::Object {
         use objc::msg_send;
         use objc::runtime::Class;
+        use objc::sel;
+        use objc::sel_impl;
         let ns_string_class = Class::get("NSString").unwrap();
         let utf8_str = std::ffi::CString::new(s).unwrap();
         msg_send![ns_string_class, stringWithUTF8String: utf8_str.as_ptr()]

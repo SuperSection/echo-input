@@ -1,3 +1,5 @@
+#![allow(unexpected_cfgs)]
+
 pub mod keymap;
 pub mod overlay;
 
@@ -9,7 +11,7 @@ use platform::overlay::OverlayRendererFactory;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tracing::{info, warn};
+use tracing::{error, info};
 
 /// macOS keyboard capture provider using CGEventTap.
 ///
@@ -71,7 +73,7 @@ impl KeyboardCaptureProvider for MacosCapture {
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
-                    warn!("macOS event tap not available on this platform");
+                    tracing::warn!("macOS event tap not available on this platform");
                     running.store(true, Ordering::Relaxed);
                     while !shutdown.load(Ordering::Relaxed) {
                         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -122,121 +124,78 @@ fn run_macos_event_tap(
     shutdown: Arc<AtomicBool>,
 ) -> Result<()> {
     use crate::keymap::keycode_to_key;
-    use core_foundation::base::{TCFType, ToVoid};
-    use core_foundation::mach_port::{CFMachPort, CFMachPortRef};
     use core_foundation::runloop::*;
-    use core_foundation::string::CFString;
+    use core_graphics::event::{
+        CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
+        EventField,
+    };
     use input_core::events::{KeyState, KeyboardEvent};
-    use std::ffi::c_void;
     use std::sync::mpsc;
-    use std::time::SystemTime;
+    use std::time::{Duration, SystemTime};
 
-    // Channel for the event tap callback to send events back
     let (event_tx, event_rx) = mpsc::channel::<(u32, bool)>();
+    let event_tx_for_closure = event_tx.clone();
 
-    // Store the sender in thread-local storage for the C callback
-    thread_local! {
-        static EVENT_TX: std::cell::RefCell<Option<mpsc::Sender<(u32, bool)>>> = std::cell::RefCell::new(None);
-    }
-
-    extern "C" fn event_tap_callback(
-        _proxy: core_graphics::sys::CGEventTapProxy,
-        event_type: core_graphics::sys::CGEventType,
-        event: core_graphics::sys::CGEventRef,
-        _user_info: *mut c_void,
-    ) -> core_graphics::sys::CGEventRef {
-        unsafe {
-            let event_type_u32 = event_type.0 as u32;
-
-            // Only process keyDown (10) and keyUp (11)
-            if event_type_u32 == 10 || event_type_u32 == 11 {
-                let keycode = core_graphics::sys::CGEventGetIntegerValueField(
-                    event,
-                    core_graphics::sys::kCGKeyboardEventKeycode as u64,
-                ) as u32;
-
-                let key_down = event_type_u32 == 10;
-
-                EVENT_TX.with(|tx| {
-                    if let Some(ref sender) = *tx.borrow() {
-                        let _ = sender.send((keycode, key_down));
-                    }
-                });
+    let tap = CGEventTap::new(
+        CGEventTapLocation::HID,
+        CGEventTapPlacement::HeadInsertEventTap,
+        CGEventTapOptions::Default,
+        vec![CGEventType::KeyDown, CGEventType::KeyUp],
+        move |_proxy, event_type, event| {
+            let event_type_u32 = event_type as u32;
+            if event_type_u32 == CGEventType::KeyDown as u32
+                || event_type_u32 == CGEventType::KeyUp as u32
+            {
+                let keycode = event.integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as u32;
+                let key_down = event_type_u32 == CGEventType::KeyDown as u32;
+                let _ = event_tx_for_closure.send((keycode, key_down));
             }
+            None
+        },
+    )
+    .map_err(|_| {
+        anyhow::anyhow!("Failed to create CGEventTap. Check Accessibility permissions.")
+    })?;
+
+    let source = tap
+        .mach_port
+        .create_runloop_source(0)
+        .map_err(|_| anyhow::anyhow!("Failed to create run loop source"))?;
+    let run_loop = CFRunLoop::get_current();
+    run_loop.add_source(&source, kCFRunLoopDefaultMode);
+
+    tap.enable();
+    running.store(true, Ordering::Relaxed);
+
+    info!("macOS event tap running");
+
+    loop {
+        if shutdown.load(Ordering::Relaxed) {
+            break;
         }
 
-        // Return the event unchanged (pass it through)
-        event
+        CFRunLoop::run_in_mode(kCFRunLoopDefaultMode, Duration::from_millis(10), true);
+
+        while let Ok((keycode, key_down)) = event_rx.try_recv() {
+            let key = keycode_to_key(keycode);
+            let state = if key_down {
+                KeyState::Pressed
+            } else {
+                KeyState::Released
+            };
+
+            let event = InputEvent::Keyboard(KeyboardEvent {
+                key,
+                state,
+                timestamp: SystemTime::now(),
+                native_code: keycode,
+            });
+
+            let _ = tx.send(event);
+        }
     }
 
-    EVENT_TX.with(|tx| {
-        *tx.borrow_mut() = Some(event_tx);
-    });
-
-    unsafe {
-        // Create the event tap
-        let event_mask = (1u64 << 10) | (1u64 << 11); // keyDown | keyUp
-
-        let tap = core_graphics::sys::CGEventTapCreate(
-            core_graphics::sys::kCGHIDEventTap,
-            core_graphics::sys::kCGHeadInsertEventTap,
-            core_graphics::sys::kCGEventTapOptionDefault,
-            event_mask,
-            event_tap_callback,
-            std::ptr::null_mut(),
-        );
-
-        if tap.is_null() {
-            return Err(anyhow::anyhow!(
-                "Failed to create CGEventTap. Check Accessibility permissions."
-            ));
-        }
-
-        let tap_port = CFMachPort::wrap_under_rule(0, tap as *mut _);
-
-        // Add to run loop
-        let run_loop = CFRunLoop::get_current();
-        let source =
-            core_foundation::runloop::CFRunLoopSource::new(tap_port.as_concrete_TypeRef(), 0);
-        run_loop.add_source(&source, kCFRunLoopDefaultMode);
-
-        // Enable the tap
-        core_graphics::sys::CGEventTapEnable(tap, true);
-
-        running.store(true, Ordering::Relaxed);
-
-        // Run the event loop
-        loop {
-            if shutdown.load(Ordering::Relaxed) {
-                break;
-            }
-
-            // Process CFRunLoop events with a short timeout
-            CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, true);
-
-            // Receive events from the tap callback
-            while let Ok((keycode, key_down)) = event_rx.try_recv() {
-                let key = keycode_to_key(keycode);
-                let state = if key_down {
-                    KeyState::Pressed
-                } else {
-                    KeyState::Released
-                };
-
-                let event = InputEvent::Keyboard(KeyboardEvent {
-                    key,
-                    state,
-                    timestamp: SystemTime::now(),
-                    native_code: keycode,
-                });
-
-                let _ = tx.send(event);
-            }
-        }
-
-        // Cleanup
-        run_loop.remove_source(&source, kCFRunLoopDefaultMode);
-    }
+    run_loop.remove_source(&source, kCFRunLoopDefaultMode);
 
     running.store(false, Ordering::Relaxed);
     Ok(())

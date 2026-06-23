@@ -551,7 +551,7 @@ fn run_wayland_event_loop(
 
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
-                RendererCommand::Update(event) => match &event {
+                RendererCommand::Update(event) => match event {
                     DisplayEvent::Shortcut(combo) => {
                         debug!("Renderer received shortcut: {}", combo.display);
                         // Merge consecutive plain keystrokes into one row
@@ -1065,8 +1065,8 @@ fn render_clear_frame(shm: &ShmBuffer) {
                 return;
             }
         };
-        let _ = cr.set_operator(cairo::Operator::Clear);
-        let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
+        cr.set_operator(cairo::Operator::Clear);
+        cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
         let _ = cr.paint();
         let _ = cr.show_page();
     }
@@ -1081,6 +1081,7 @@ fn render_clear_frame(shm: &ShmBuffer) {
     shm.write_pixels(&data);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_keycaps(
     shm: &ShmBuffer,
     combos: &[ShortcutCombo],
@@ -1128,11 +1129,11 @@ fn render_keycaps(
         };
 
         // Clear to transparent
-        let _ = cr.set_operator(cairo::Operator::Clear);
-        let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
+        cr.set_operator(cairo::Operator::Clear);
+        cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
         let _ = cr.paint();
 
-        let _ = cr.set_operator(cairo::Operator::Over);
+        cr.set_operator(cairo::Operator::Over);
 
         // Apply scale transform from center of content
         let center_x = width as f64 / 2.0;
@@ -1233,27 +1234,26 @@ fn render_keycaps(
 
                 // Draw shadow (unless minimal style)
                 if config.keycap_style != KeycapStyle::Minimal {
-                    let _ = cr.new_path();
+                    cr.new_path();
                     draw_rounded_rect(&cr, x + 2.0, y + 3.0, kw, keycap_h, corner_radius);
-                    let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 0.4 * row_opacity as f64);
+                    cr.set_source_rgba(0.0, 0.0, 0.0, 0.4 * row_opacity as f64);
                     let _ = cr.fill();
                 }
 
                 // Draw keycap background
-                let _ = cr.new_path();
+                cr.new_path();
                 draw_rounded_rect(&cr, x, y, kw, keycap_h, corner_radius);
 
                 match config.keycap_style {
                     KeycapStyle::Minimal => {
                         // Flat solid color, no gradient
-                        let _ = cr.set_source_rgba(bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
+                        cr.set_source_rgba(bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
                         let _ = cr.fill();
                     }
                     KeycapStyle::LowProfile => {
                         // Darker, flatter
                         let (dark_r, dark_g, dark_b) = darken(bg_r, bg_g, bg_b, 0.2);
-                        let _ =
-                            cr.set_source_rgba(dark_r, dark_g, dark_b, row_opacity as f64 * 0.85);
+                        cr.set_source_rgba(dark_r, dark_g, dark_b, row_opacity as f64 * 0.85);
                         let _ = cr.fill();
                     }
                     _ => {
@@ -1276,7 +1276,7 @@ fn render_keycaps(
                             );
                             let _ = cr.set_source(&pattern);
                         } else {
-                            let _ = cr.set_source_rgba(bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
+                            cr.set_source_rgba(bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
                         }
                         let _ = cr.fill_preserve();
                     }
@@ -1284,14 +1284,14 @@ fn render_keycaps(
 
                 // Draw border (unless minimal style)
                 if config.keycap_style != KeycapStyle::Minimal && config.border.enabled {
-                    let _ = cr.set_source_rgba(brd_r, brd_g, brd_b, row_opacity as f64 * 0.6);
+                    cr.set_source_rgba(brd_r, brd_g, brd_b, row_opacity as f64 * 0.6);
                     cr.set_line_width(config.border.width as f64);
                     let _ = cr.stroke();
                 }
 
                 // Draw top highlight (subtle shine) - not for minimal/lowprofile
                 if matches!(config.keycap_style, KeycapStyle::Laptop | KeycapStyle::PBT) {
-                    let _ = cr.new_path();
+                    cr.new_path();
                     draw_rounded_rect(
                         &cr,
                         x + 1.0,
@@ -1309,9 +1309,9 @@ fn render_keycaps(
 
                 // Draw background fill (if enabled)
                 if config.background.enabled {
-                    let _ = cr.new_path();
+                    cr.new_path();
                     draw_rounded_rect(&cr, x, y, kw, keycap_h, corner_radius);
-                    let _ = cr.set_source_rgba(
+                    cr.set_source_rgba(
                         background_color.0,
                         background_color.1,
                         background_color.2,
@@ -1345,13 +1345,13 @@ fn render_keycaps(
 
                     // Text shadow (not for minimal style)
                     if config.keycap_style != KeycapStyle::Minimal {
-                        let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 0.5 * row_opacity as f64);
+                        cr.set_source_rgba(0.0, 0.0, 0.0, 0.5 * row_opacity as f64);
                         cr.move_to(text_x + 1.0, text_y + 1.0);
                         let _ = cr.show_text(&display_label);
                     }
 
                     // Main text
-                    let _ = cr.set_source_rgba(txt_r, txt_g, txt_b, row_opacity as f64);
+                    cr.set_source_rgba(txt_r, txt_g, txt_b, row_opacity as f64);
                     cr.move_to(text_x, text_y);
                     let _ = cr.show_text(&display_label);
                 }
@@ -1371,7 +1371,7 @@ fn render_keycaps(
                             let sep_x = sep_center_x - sep_visual_w / 2.0;
                             let sep_y =
                                 y + (keycap_h - sep_ext.height()) / 2.0 - sep_ext.y_bearing();
-                            let _ = cr.set_source_rgba(0.55, 0.55, 0.6, row_opacity as f64 * 0.8);
+                            cr.set_source_rgba(0.55, 0.55, 0.6, row_opacity as f64 * 0.8);
                             cr.move_to(sep_x, sep_y);
                             let _ = cr.show_text("+");
                         }
@@ -1442,16 +1442,13 @@ impl Dispatch<wl_buffer::WlBuffer, usize> for AppState {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        match event {
-            wl_buffer::Event::Release => {
-                if *id == 0 {
-                    state.buffer_a_ready = true;
-                } else {
-                    state.buffer_b_ready = true;
-                }
-                trace!(buffer_id = *id, "wl_buffer released");
+        if let wl_buffer::Event::Release = event {
+            if *id == 0 {
+                state.buffer_a_ready = true;
+            } else {
+                state.buffer_b_ready = true;
             }
-            _ => {}
+            trace!(buffer_id = *id, "wl_buffer released");
         }
     }
 }
@@ -1627,15 +1624,11 @@ impl Dispatch<wl_output::WlOutput, ()> for AppState {
             wl_output::Event::Mode {
                 width,
                 height,
-                flags,
+                flags: WEnum::Value(f),
                 ..
-            } => {
-                if let WEnum::Value(f) = flags {
-                    if f.bits() & 1 != 0 {
-                        info.width = width;
-                        info.height = height;
-                    }
-                }
+            } if f.bits() & 1 != 0 => {
+                    info.width = width;
+                    info.height = height;
             }
             _ => {}
         }
