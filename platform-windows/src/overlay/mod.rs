@@ -259,7 +259,7 @@ fn run_windows_overlay(
                             hide_window(hwnd);
                         }
                         DisplayEvent::UpdateConfig(new_config) => {
-                            config = new_config;
+                            config = *new_config;
                         }
                     },
                     RendererCommand::Stop => {

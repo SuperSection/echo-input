@@ -607,7 +607,7 @@ fn run_wayland_event_loop(
                         animation = Animation::new(&config);
                     }
                     DisplayEvent::UpdateConfig(new_config) => {
-                        config = new_config.clone();
+                        config = *new_config;
                         animation.update_config(&config);
                     }
                 },

@@ -255,5 +255,5 @@ pub enum DisplayEvent {
     /// Clear the overlay.
     Clear,
     /// Update configuration.
-    UpdateConfig(OverlayConfig),
+    UpdateConfig(Box<OverlayConfig>),
 }

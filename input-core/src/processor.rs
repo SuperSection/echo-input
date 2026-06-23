@@ -70,10 +70,8 @@ impl DefaultEventProcessor {
                     self.modifiers.capslock = !self.modifiers.capslock;
                 }
             }
-            VirtualKey::NumpadLock => {
-                if pressed {
-                    self.modifiers.numlock = !self.modifiers.numlock;
-                }
+            VirtualKey::NumpadLock if pressed => {
+                self.modifiers.numlock = !self.modifiers.numlock;
             }
             _ => {}
         }

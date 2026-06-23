@@ -306,7 +306,7 @@ fn run_x11_event_loop(
                         let _ = clear_x11(&conn, window);
                     }
                     DisplayEvent::UpdateConfig(new_config) => {
-                        config = new_config;
+                        config = *new_config;
                     }
                 },
                 RendererCommand::Stop => {

@@ -262,7 +262,7 @@ fn run_macos_overlay(
                             let _: () = msg_send![view, setNeedsDisplay: 1u8];
                         }
                         DisplayEvent::UpdateConfig(new_config) => {
-                            config = new_config;
+                            config = *new_config;
                         }
                     },
                     RendererCommand::Stop => {

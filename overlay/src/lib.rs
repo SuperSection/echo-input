@@ -112,7 +112,7 @@ impl OverlayState {
         self.config = config;
         let _ = self
             .tx
-            .send(DisplayEvent::UpdateConfig(self.config.clone()));
+            .send(DisplayEvent::UpdateConfig(Box::new(self.config.clone())));
     }
 
     /// Get current configuration.
@@ -232,7 +232,7 @@ impl OverlayManager {
                                         state.clear();
                                     }
                                     OverlayCommand::UpdateConfig(config) => {
-                                        state.update_config(config);
+                                        state.update_config(*config);
                                     }
                                 }
                             }
@@ -305,7 +305,7 @@ impl OverlayManager {
                 self.start();
             }
             OverlayCommand::Clear => self.clear(),
-            OverlayCommand::UpdateConfig(config) => self.update_config(config),
+            OverlayCommand::UpdateConfig(config) => self.update_config(*config),
         }
     }
 

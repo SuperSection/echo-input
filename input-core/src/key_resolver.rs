@@ -32,6 +32,13 @@ unsafe impl Send for KeyResolver {}
 unsafe impl Sync for KeyResolver {}
 
 #[cfg(target_os = "linux")]
+impl Default for KeyResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(target_os = "linux")]
 impl KeyResolver {
     /// Create a new resolver with the default system keymap.
     pub fn new() -> Self {
@@ -179,6 +186,13 @@ impl KeyResolver {
 /// Non-Linux stub — no xkbcommon available.
 #[cfg(not(target_os = "linux"))]
 pub struct KeyResolver;
+
+#[cfg(not(target_os = "linux"))]
+impl Default for KeyResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[cfg(not(target_os = "linux"))]
 impl KeyResolver {

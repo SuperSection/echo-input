@@ -35,7 +35,7 @@ pub enum OverlayCommand {
     /// Clear all displayed items.
     Clear,
     /// Update overlay configuration.
-    UpdateConfig(OverlayConfig),
+    UpdateConfig(Box<OverlayConfig>),
 }
 
 /// Settings changes from the Tauri application.
@@ -114,7 +114,7 @@ pub enum Message {
     /// Processed shortcut event for overlay display.
     Shortcut(ShortcutEvent),
     /// Command to control the overlay.
-    Command(OverlayCommand),
+    Command(Box<OverlayCommand>),
     /// Settings update from the application.
     Settings(SettingsUpdate),
 }
@@ -446,7 +446,7 @@ mod tests {
         bus.publish_command(OverlayCommand::Stop);
         bus.publish_command(OverlayCommand::Restart);
         bus.publish_command(OverlayCommand::Clear);
-        bus.publish_command(OverlayCommand::UpdateConfig(OverlayConfig::default()));
+        bus.publish_command(OverlayCommand::UpdateConfig(Box::new(OverlayConfig::default())));
     }
 
     #[test]
