@@ -253,7 +253,7 @@ impl KeyResolver {
             state[VK_NUMLOCK as usize] |= 0x01;
         }
 
-        let scan_code = ((vk & 0xFF) << 16) as u32;
+        let scan_code = ((vk as u32 & 0xFF) << 16);
         let mut buf = [0u16; 4];
 
         let result = unsafe {
