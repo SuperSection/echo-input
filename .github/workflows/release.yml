@@ -65,22 +65,22 @@ jobs:
 
           # Create .desktop file
           cat > AppDir/echoinput.desktop << 'EOF'
-[Desktop Entry]
-Type=Application
-Name=EchoInput
-Comment=Keyboard visualization overlay
-Exec=echoinput
-Icon=echoinput
-Categories=Utility;
-EOF
+          [Desktop Entry]
+          Type=Application
+          Name=EchoInput
+          Comment=Keyboard visualization overlay
+          Exec=echoinput
+          Icon=echoinput
+          Categories=Utility;
+          EOF
 
           # Create AppRun
           cat > AppDir/AppRun << 'EOF'
-#!/bin/sh
-HERE="$(dirname "$(readlink -f "$0")")"
-export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
-exec "$HERE/usr/bin/echoinput" "$@"
-EOF
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
+          exec "$HERE/usr/bin/echoinput" "$@"
+          EOF
           chmod +x AppDir/AppRun
 
           # Create icon (placeholder - use a simple PNG)
@@ -109,18 +109,18 @@ EOF
           cp AppDir/usr/share/icons/hicolor/256x256/apps/echoinput.png deb-package/usr/share/icons/hicolor/256x256/apps/
 
           cat > deb-package/DEBIAN/control << EOF
-Package: echoinput
-Version: $VERSION
-Section: utils
-Priority: optional
-Architecture: amd64
-Depends: libc6 (>= 2.31), libwayland-client0, libxkbcommon0, libcairo2, libglib2.0-0
-Maintainer: EchoInput Team <soumosarkar.official@gmail.com>
-Description: Privacy-first keyboard visualization overlay
- EchoInput shows your keyboard shortcuts on screen as you type.
- Works on Wayland, X11, Windows, and macOS.
- No telemetry, no cloud, no tracking.
-EOF
+          Package: echoinput
+          Version: $VERSION
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Depends: libc6 (>= 2.31), libwayland-client0, libxkbcommon0, libcairo2, libglib2.0-0
+          Maintainer: EchoInput Team <team@echoinput.dev>
+          Description: Privacy-first keyboard visualization overlay
+           EchoInput shows your keyboard shortcuts on screen as you type.
+           Works on Wayland, X11, Windows, and macOS.
+           No telemetry, no cloud, no tracking.
+          EOF
 
           dpkg-deb --build deb-package echoinput-${VERSION}-amd64.deb
 
@@ -136,30 +136,30 @@ EOF
           cp AppDir/usr/share/icons/hicolor/256x256/apps/echoinput.png rpm-package/usr/share/icons/hicolor/256x256/apps/
 
           cat > rpm-package.spec << EOF
-Name: echoinput
-Version: $VERSION
-Release: 1%{?dist}
-Summary: Privacy-first keyboard visualization overlay
-License: MIT OR Apache-2.0
-URL: https://github.com/SuperSection/echoinput
-Source0: echoinput-%{version}.tar.gz
-BuildArch: x86_64
-Requires: libc6 >= 2.31, libwayland-client0, libxkbcommon0, libcairo2, glib2
+          Name: echoinput
+          Version: $VERSION
+          Release: 1%{?dist}
+          Summary: Privacy-first keyboard visualization overlay
+          License: MIT OR Apache-2.0
+          URL: https://github.com/SuperSection/echoinput
+          Source0: echoinput-%{version}.tar.gz
+          BuildArch: x86_64
+          Requires: libc6 >= 2.31, libwayland-client0, libxkbcommon0, libcairo2, glib2
 
-%description
-EchoInput shows your keyboard shortcuts on screen as you type.
-Works on Wayland, X11, Windows, and macOS.
-No telemetry, no cloud, no tracking.
+          %description
+          EchoInput shows your keyboard shortcuts on screen as you type.
+          Works on Wayland, X11, Windows, and macOS.
+          No telemetry, no cloud, no tracking.
 
-%files
-/usr/bin/echoinput
-/usr/share/applications/echoinput.desktop
-/usr/share/icons/hicolor/256x256/apps/echoinput.png
+          %files
+          /usr/bin/echoinput
+          /usr/share/applications/echoinput.desktop
+          /usr/share/icons/hicolor/256x256/apps/echoinput.png
 
-%changelog
-* $(date "+%a %b %d %Y") EchoInput Team <soumosarkar.official@gmail.com> - $VERSION-1
-- Initial release
-EOF
+          %changelog
+          * $(date "+%a %b %d %Y") EchoInput Team <team@echoinput.dev> - $VERSION-1
+          - Initial release
+          EOF
 
           rpmbuild --define "_topdir $(pwd)/rpmbuild" -bb rpm-package.spec
           cp rpmbuild/RPMS/x86_64/echoinput-*.rpm .
@@ -336,27 +336,27 @@ EOF
           chmod +x dmg/EchoInput.app/Contents/MacOS/echoinput
 
           cat > dmg/EchoInput.app/Contents/Info.plist << PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>echoinput</string>
-    <key>CFBundleIdentifier</key>
-    <string>dev.echoinput.EchoInput</string>
-    <key>CFBundleName</key>
-    <string>EchoInput</string>
-    <key>CFBundleVersion</key>
-    <string>$VERSION</string>
-    <key>CFBundleShortVersionString</key>
-    <string>$VERSION</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>10.15</string>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-</dict>
-</plist>
-PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>echoinput</string>
+              <key>CFBundleIdentifier</key>
+              <string>dev.echoinput.EchoInput</string>
+              <key>CFBundleName</key>
+              <string>EchoInput</string>
+              <key>CFBundleVersion</key>
+              <string>$VERSION</string>
+              <key>CFBundleShortVersionString</key>
+              <string>$VERSION</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.15</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          PLIST
 
           sips -s format icns /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns --out dmg/EchoInput.app/Contents/Resources/AppIcon.icns 2>/dev/null || true
 
