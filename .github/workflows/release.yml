@@ -209,6 +209,9 @@ jobs:
           Copy-Item "target/release/echoinput.exe" "release/echoinput.exe"
           Compress-Archive -Path "release/*" -DestinationPath "echoinput-${version}-x86_64-windows.zip"
 
+      - name: Install cargo-wix
+        run: cargo install cargo-wix
+
       - name: Build .msi installer
         shell: pwsh
         run: |
@@ -236,7 +239,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "candle failed with exit code $LASTEXITCODE" }
 
           & "$wixDir\light.exe" -nologo `
-            -sice:ICE61 `
+            -ext WixUIExtension `
             -spdb `
             -out "target\wix\echoinput-$version-x64.msi" `
             "target\wix\echoinput.wixobj"
