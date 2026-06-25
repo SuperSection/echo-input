@@ -213,7 +213,38 @@ jobs:
         run: cargo install cargo-wix
 
       - name: Build .msi installer
-        run: cargo wix --no-build -p echoinput
+        shell: pwsh
+        run: |
+          $wixDir = "C:\Program Files (x86)\WiX Toolset v3.14\bin"
+          if (-not (Test-Path $wixDir)) {
+            $wixDir = "C:\Program Files\WiX Toolset v3.14\bin"
+          }
+          if (-not (Test-Path $wixDir)) {
+            $wixDir = (Get-Command candle.exe -ErrorAction SilentlyContinue).Source | Split-Path
+          }
+          Write-Host "WiX dir: $wixDir"
+
+          $version = (Get-Content Cargo.toml | Select-String '^version' | ForEach-Object { $_.Line -replace '.*"([^"]+)".*', '$1' }).Trim()
+          $targetDir = "$PWD\target\release"
+
+          New-Item -ItemType Directory -Force -Path "target\wix"
+
+          & "$wixDir\candle.exe" -nologo `
+            -dVersion="$version" `
+            "-dCargoTargetBinDir=$targetDir" `
+            -arch x64 `
+            -out "target\wix\echoinput.wixobj" `
+            "echoinput\wix\main.wxs"
+
+          if ($LASTEXITCODE -ne 0) { throw "candle failed with exit code $LASTEXITCODE" }
+
+          & "$wixDir\light.exe" -nologo `
+            -ext WixUIExtension `
+            -spdb `
+            -out "target\wix\echoinput-$version-x64.msi" `
+            "target\wix\echoinput.wixobj"
+
+          if ($LASTEXITCODE -ne 0) { throw "light failed with exit code $LASTEXITCODE" }
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
