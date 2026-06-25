@@ -36,7 +36,7 @@ jobs:
 
       - name: Install appimagetool
         run: |
-          wget -q https://github.com/AppImage/type2-runtime/releases/download/continuous/appimagetool-x86_64.AppImage -O /tmp/appimagetool
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O /tmp/appimagetool
           chmod +x /tmp/appimagetool
 
       - name: Setup Rust
@@ -210,7 +210,7 @@ jobs:
         run: cargo install cargo-wix
 
       - name: Build .msi installer
-        run: cargo wix --no-build -p echoinput
+        run: cargo wix --no-build
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -221,42 +221,7 @@ jobs:
             target/wix/echoinput-*.msi
             target/release/echoinput.exe
 
-  build-macos-x86_64:
-    name: Build macOS (x86_64)
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install system dependencies
-        run: |
-          brew install cairo pkg-config
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-x86_64-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-x86_64-cargo-
-
-      - name: Build release (x86_64)
-        run: cargo build --release --bin echoinput
-
-      - name: Upload x86_64 binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-x86_64-binary
-          path: target/release/echoinput
-
-  build-macos-arm64:
+  build-macos:
     name: Build macOS (ARM64)
     runs-on: macos-latest
     steps:
@@ -264,7 +229,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          brew install cairo pkg-config
+          brew install cairo pkg-config create-dmg
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -278,64 +243,24 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-arm64-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-arm64-cargo-
+            ${{ runner.os }}-cargo-
 
-      - name: Build release (ARM64)
+      - name: Build release
         run: cargo build --release --bin echoinput
 
-      - name: Upload ARM64 binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-arm64-binary
-          path: target/release/echoinput
-
-  build-macos:
-    name: Package macOS (universal)
-    needs: [build-macos-x86_64, build-macos-arm64]
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install system dependencies
-        run: |
-          brew install create-dmg
-
-      - name: Download x86_64 binary
-        uses: actions/download-artifact@v4
-        with:
-          name: macos-x86_64-binary
-          path: binaries/x86_64
-
-      - name: Download ARM64 binary
-        uses: actions/download-artifact@v4
-        with:
-          name: macos-arm64-binary
-          path: binaries/arm64
-
-      - name: Create universal binary and DMG
+      - name: Create DMG
         run: |
           export VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-
-          chmod +x binaries/x86_64/echoinput binaries/arm64/echoinput
-          file binaries/x86_64/echoinput
-          file binaries/arm64/echoinput
-
-          lipo -create \
-            binaries/x86_64/echoinput \
-            binaries/arm64/echoinput \
-            -output echoinput-universal
-
-          lipo -info echoinput-universal
 
           mkdir -p dmg/EchoInput.app/Contents/MacOS
           mkdir -p dmg/EchoInput.app/Contents/Resources
 
-          cp echoinput-universal dmg/EchoInput.app/Contents/MacOS/echoinput
+          cp target/release/echoinput dmg/EchoInput.app/Contents/MacOS/echoinput
           chmod +x dmg/EchoInput.app/Contents/MacOS/echoinput
 
-          cat > dmg/EchoInput.app/Contents/Info.plist << PLIST
+          cat > dmg/EchoInput.app/Contents/Info.plist << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -347,11 +272,11 @@ jobs:
               <key>CFBundleName</key>
               <string>EchoInput</string>
               <key>CFBundleVersion</key>
-              <string>$VERSION</string>
+              <string>0.1.0</string>
               <key>CFBundleShortVersionString</key>
-              <string>$VERSION</string>
+              <string>0.1.0</string>
               <key>LSMinimumSystemVersion</key>
-              <string>10.15</string>
+              <string>11.0</string>
               <key>NSHighResolutionCapable</key>
               <true/>
           </dict>
@@ -368,7 +293,7 @@ jobs:
             --icon "EchoInput.app" 175 190 \
             --hide-extension "EchoInput.app" \
             --app-drop-link 425 190 \
-            "echoinput-${VERSION}-universal.dmg" \
+            "echoinput-${VERSION}-arm64.dmg" \
             "dmg/"
 
       - name: Upload macOS artifacts
@@ -377,7 +302,7 @@ jobs:
           name: macos-artifacts
           path: |
             echoinput-*.dmg
-            echoinput-universal
+            target/release/echoinput
 
   create-release:
     name: Create GitHub Release
