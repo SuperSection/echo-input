@@ -65,6 +65,7 @@
               Value="1"
               KeyPath="yes" />
             <RemoveFile Id="RemoveShortcutsDir" Directory="ApplicationProgramsFolder" Name="*.*" On="uninstall" />
+            <RemoveFolder Id="RemoveShortcutsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
           </Component>
           <Component Id="UninstallShortcut" Guid="*">
             <Shortcut
