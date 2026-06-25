@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="windows-1252"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product
     Id="*"
@@ -12,31 +12,31 @@
     <Package
       Id="*"
       Keywords="Installer"
-      Description="EchoInput — Privacy-first keyboard visualization overlay"
+      Description="EchoInput keyboard visualization overlay"
       Manufacturer="EchoInput Team"
-      InstallerVersion="450"
+      InstallerVersion="200"
       Languages="1033"
       Compressed="yes"
       InstallScope="perMachine"
-      SummaryCodepage="1252"
-      Platform="x64" />
+      SummaryCodepage="1252" />
 
     <MajorUpgrade
-      AllowSameVersionUpgrades="no"
+      AllowDowngrades="no"
       DowngradeErrorMessage="A newer version of EchoInput is already installed." />
 
-    <Media Id="1" Cabinet="echoinput.cab" EmbedCab="yes" DiskPrompt="CD-ROM #1" />
+    <Media Id="1" Cabinet="echoinput.cab" EmbedCab="yes" />
     <Property Id="DiskPrompt" Value="EchoInput Installation" />
 
     <Icon Id="EchoInputIcon" SourceFile="$(var.CargoTargetBinDir)\echoinput.exe" />
     <Property Id="ARPPRODUCTICON" Value="EchoInputIcon" />
     <Property Id="ARPHELPLINK" Value="https://github.com/SuperSection/echoinput" />
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/SuperSection/echoinput" />
+    <Property Id="ARPREADME" Value="https://github.com/SuperSection/echoinput" />
 
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder" Name="PFiles">
         <Directory Id="APPLICATIONFOLDER" Name="EchoInput">
-          <Component Id="MainExecutable" Guid="*">
+          <Component Id="MainExecutable" Guid="*" Win64="yes">
             <File
               Id="echoinput.exe"
               Name="echoinput.exe"
@@ -48,51 +48,26 @@
       </Directory>
 
       <Directory Id="ProgramMenuFolder" Name="Programs">
-        <Directory Id="ApplicationProgramsFolder" Name="EchoInput">
-          <Component Id="Shortcut" Guid="*">
-            <Shortcut
-              Id="ApplicationStartMenuShortcut"
-              Name="EchoInput"
-              Description="Privacy-first keyboard visualization overlay"
-              Target="[APPLICATIONFOLDER]echoinput.exe"
-              WorkingDirectory="APPLICATIONFOLDER"
-              Icon="EchoInputIcon" />
-            <RegistryValue
-              Root="HKCU"
-              Key="Software\EchoInput\Shortcuts"
-              Name="StartMenu"
-              Type="integer"
-              Value="1"
-              KeyPath="yes" />
-            <RemoveFile Id="RemoveShortcutsDir" Directory="ApplicationProgramsFolder" Name="*.*" On="uninstall" />
-            <RemoveFolder Id="RemoveShortcutsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
-          </Component>
-          <Component Id="UninstallShortcut" Guid="*">
-            <Shortcut
-              Id="UninstallProgramMenuShortcut"
-              Name="Uninstall EchoInput"
-              Description="Remove EchoInput from your computer"
-              Target="[System64Folder]msiexec.exe"
-              Arguments="/x [ProductCode]" />
-            <RegistryValue
-              Root="HKCU"
-              Key="Software\EchoInput\Shortcuts"
-              Name="UninstallMenu"
-              Type="integer"
-              Value="1"
-              KeyPath="yes" />
-          </Component>
-        </Directory>
-      </Directory>
-
-      <Directory Id="StartupFolder" Name="Startup">
-        <Component Id="AutoStart" Guid="*">
+        <Component Id="Shortcut" Guid="*" Win64="no">
+          <CreateFolder Directory="ApplicationProgramsFolder" />
+          <Shortcut
+            Id="ApplicationStartMenuShortcut"
+            Directory="ApplicationProgramsFolder"
+            Name="EchoInput"
+            Description="Privacy-first keyboard visualization overlay"
+            Target="[APPLICATIONFOLDER]echoinput.exe"
+            WorkingDirectory="APPLICATIONFOLDER"
+            Icon="EchoInputIcon" />
+          <RemoveFolder
+            Id="RemoveApplicationProgramsFolder"
+            Directory="ApplicationProgramsFolder"
+            On="uninstall" />
           <RegistryValue
             Root="HKCU"
-            Key="Software\Microsoft\Windows\CurrentVersion\Run"
-            Name="EchoInput"
-            Type="string"
-            Value="[APPLICATIONFOLDER]echoinput.exe"
+            Key="Software\EchoInput\Shortcuts"
+            Name="StartMenu"
+            Type="integer"
+            Value="1"
             KeyPath="yes" />
         </Component>
       </Directory>
@@ -110,17 +85,6 @@
 
       <ComponentRef Id="MainExecutable" />
       <ComponentRef Id="Shortcut" />
-      <ComponentRef Id="UninstallShortcut" />
-    </Feature>
-
-    <Feature
-      Id="AutoStartFeature"
-      Title="Start with Windows"
-      Description="Automatically start EchoInput when you log in."
-      Level="1"
-      Absent="allow">
-
-      <ComponentRef Id="AutoStart" />
     </Feature>
   </Product>
 </Wix>
